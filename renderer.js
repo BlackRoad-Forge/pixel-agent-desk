@@ -49,6 +49,21 @@ let currentAnimName = null;
 let animInterval = null;
 let currentFrameIdx = 0;
 
+// --- 타이머 관련 변수 ---
+let startTime = null;
+let timerInterval = null;
+let lastFormattedTime = '';
+
+/**
+ * 밀리초를 MM:SS 형식으로 변환
+ */
+function formatTime(ms) {
+  const totalSeconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
 /**
  * 프레임 인덱스를 background-position으로 변환하여 적용
  */
@@ -97,7 +112,7 @@ function playAnimation(animName) {
 }
 
 /**
- * 상태 업데이트 (상세 메시지 무시, 라벨만 사용)
+ * 상태 업데이트 (상세 메시지 무시, 라벨 및 타이머 사용)
  */
 function updateState(state, message) {
   const config = stateConfig[state] || stateConfig['Stop'];
@@ -108,10 +123,50 @@ function updateState(state, message) {
   // 애니메이션 재생
   playAnimation(config.anim);
 
-  // 말풍선 업데이트 (전달받은 message 대신 무조건 config.label 사용)
-  if (speechBubble) speechBubble.textContent = config.label || 'Waiting...';
+  // 타이머 로직 처리
+  if (config.anim === 'working') {
+    // 작업 시작 시 타이머 초기화 및 시작
+    if (!startTime) {
+      startTime = Date.now();
+      if (timerInterval) clearInterval(timerInterval);
 
-  console.log(`[Renderer] State: ${state}, Label: ${config.label}`);
+      timerInterval = setInterval(() => {
+        const elapsed = Date.now() - startTime;
+        lastFormattedTime = formatTime(elapsed);
+        if (speechBubble) {
+          speechBubble.textContent = `${config.label} (${lastFormattedTime})`;
+        }
+      }, 1000);
+    }
+    // 즉시 표시
+    const elapsed = Date.now() - (startTime || Date.now());
+    lastFormattedTime = formatTime(elapsed);
+    if (speechBubble) speechBubble.textContent = `${config.label} (${lastFormattedTime})`;
+
+  } else if (config.anim === 'complete') {
+    // 작업 완료 시 타이머 멈춤 및 최종 시간 유지
+    if (timerInterval) {
+      clearInterval(timerInterval);
+      timerInterval = null;
+    }
+    if (speechBubble) {
+      const finalTime = lastFormattedTime || '00:00';
+      speechBubble.textContent = `${config.label} (${finalTime})`;
+    }
+    startTime = null; // 다음 작업을 위해 초기화
+
+  } else {
+    // 그 외 상태 (Waiting, Alert 등) 타이머 초기화
+    if (timerInterval) {
+      clearInterval(timerInterval);
+      timerInterval = null;
+    }
+    startTime = null;
+    lastFormattedTime = '';
+    if (speechBubble) speechBubble.textContent = config.label || 'Waiting...';
+  }
+
+  console.log(`[Renderer] State: ${state}, Label: ${config.label}, Timer: ${lastFormattedTime}`);
 }
 
 // IPC 수신

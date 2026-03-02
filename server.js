@@ -75,14 +75,12 @@ async function createHttpServer() {
           let mappedState = state;
           let message = data.last_assistant_message || data.prompt || data.tool_name || data.message || "";
 
-          // --- 고도화된 에러/상태 감지 로직 ---
+          // --- 에러/상태 감지 로직 (훅 기반 단순화) ---
+          const isErrorState = state === 'PostToolUseFailure';
 
-          // 1. 실제 시스템 에러 객체 감지 (429 에러 등 루트 레벨에 error 필드가 있는 경우)
-          const hasSystemError = data.error && (typeof data.error === 'object' || state === 'PostToolUseFailure');
-
-          if (hasSystemError) {
+          if (isErrorState) {
             mappedState = 'Error';
-            message = typeof data.error === 'object' ? (data.error.message || 'API Error') : (data.error || 'Execution Failed');
+            message = (data.error && data.error.message) || data.error || message || 'Execution Failed';
           }
           // 2. 강제 중단 감지 (사용자 개입 필요 상황)
           else if (data.is_interrupt === true) {
