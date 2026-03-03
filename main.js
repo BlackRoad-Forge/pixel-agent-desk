@@ -191,13 +191,23 @@ function startHookServer() {
             break;
 
           case 'PreToolUse':
-          case 'PostToolUse':
-            // 도구 사용 중 → Working
+          case 'PostToolUse': {
+            // SessionStart 직후 5초는 초기화 구간으로 간주 → Working 전환 억제
+            // (Claude가 세션 시작 시 cwd 확인 등 내부 도구를 즉시 사용하기 때문)
+            const INIT_GRACE_MS = 5000;
             if (agentManager) {
               const agent = agentManager.getAgent(sessionId);
-              if (agent) agentManager.updateAgent({ ...agent, sessionId, state: 'Working' }, 'hook');
+              if (agent) {
+                const sinceStart = agent.firstSeen ? Date.now() - agent.firstSeen : Infinity;
+                if (sinceStart > INIT_GRACE_MS) {
+                  agentManager.updateAgent({ ...agent, sessionId, state: 'Working' }, 'hook');
+                } else {
+                  debugLog(`[Hook] ${event} ignored (init grace ${Math.round(sinceStart)}ms < ${INIT_GRACE_MS}ms)`);
+                }
+              }
             }
             break;
+          }
 
           case 'TaskCompleted':
             // AI 응답 완료 → Done
