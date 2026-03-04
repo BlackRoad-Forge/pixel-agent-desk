@@ -21,10 +21,10 @@ let agentManager = null;
 function getWindowSizeForAgents(count) {
   if (count <= 1) return { width: 220, height: 210 };
 
-  // 멀티 에이전트: 바탕 여백(OUTER) 넉넉히 부여하여 DPI 스케일링에서 카드 잘림/줄바꿈 혼선 방지 (20 -> 36)
+  // 멀티 에이전트: 바탕 여백(OUTER) 넉넉히 부여하여 그룹 마진 및 줄바꿈 혼선 방지 (40 -> 120)
   const CARD_W = 90;
   const GAP = 10;
-  const OUTER = 40;
+  const OUTER = 120;
   const ROW_H = 160; // 추가되는 행당 높이 여유분
   const BASE_H = 210; // 첫 번째 행(기본) 최소 높이
 

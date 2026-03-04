@@ -231,7 +231,7 @@ function createAgentCard(agent) {
   const projectTag = document.createElement('span');
   projectTag.className = 'project-tag';
   projectTag.textContent = agent.projectPath ? agent.projectPath.split(/[\\/]/).pop() : 'Default';
-  projectTag.title = agent.projectPath || ''; // 툴팁으로 전체 경로 표시 (null 안전)
+  projectTag.setAttribute('data-full-path', agent.projectPath || 'No Path'); // CSS 툴팁용 텍스트
 
   const typeTag = document.createElement('span');
   typeTag.className = `type-tag ${typeClass}`;
@@ -241,9 +241,16 @@ function createAgentCard(agent) {
   header.appendChild(typeTag);
   card.appendChild(header);
 
+  // Create agent name (직책/이름 표시)
+  const nameBadge = document.createElement('div');
+  nameBadge.className = 'agent-name';
+  nameBadge.textContent = agent.displayName || typeLabel;
+  nameBadge.title = agent.displayName; // 긴 이름일 경우 기본 툴팁
+
   // Assemble card
   card.appendChild(bubble);
   card.appendChild(character);
+  card.appendChild(nameBadge);
   card.appendChild(dismissBtn);
 
   // 찌르기(Poke) 상호작용 - 터미널 포커스 대신 재미있는 반응 추가
@@ -389,8 +396,21 @@ function updateGridLayout() {
     return score(dataA) - score(dataB);
   });
 
-  // DOM 순서 재배치
-  cards.forEach(card => agentGrid.appendChild(card));
+  // DOM 순서 재배치 및 그룹별 시각적 분리 (마진 추가)
+  let lastProject = null;
+  cards.forEach(card => {
+    const data = window.lastAgents?.find(ag => ag.id === card.dataset.agentId);
+    const currProject = data ? data.projectPath : null;
+
+    if (lastProject !== null && currProject !== lastProject) {
+      card.classList.add('group-start');
+    } else {
+      card.classList.remove('group-start');
+    }
+    lastProject = currProject;
+
+    agentGrid.appendChild(card);
+  });
 }
 
 // --- 이벤트 리스너 등록 ---

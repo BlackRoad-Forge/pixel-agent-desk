@@ -149,17 +149,42 @@ body {
 
 .project-tag {
   font-family: 'Pretendard Variable', sans-serif;
-  font-size: 8px;
+  font-size: 9.5px;
+  /* 폰트 약간 더 크게 */
   font-weight: 800;
   color: #fff;
   background: rgba(0, 0, 0, 0.7);
   padding: 1px 5px;
   border-radius: 4px;
-  max-width: 85px;
+  max-width: 60px;
+  /* 말줄임이 더 빨리, 많이 오도록 폭 축소 */
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   letter-spacing: -0.02em;
+  position: relative;
+  cursor: help;
+}
+
+/* 즉각 반응형 커스텀 툴팁 */
+.project-tag:hover::after {
+  content: attr(data-full-path);
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-top: 4px;
+  background: rgba(0, 0, 0, 0.9);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-width: 150px;
+  z-index: 1000;
+  font-size: 8px;
+  text-align: center;
+  pointer-events: none;
 }
 
 .type-tag {
@@ -173,14 +198,38 @@ body {
 }
 
 /* 타입별 스타일 */
-.type-main .type-tag { background: #E91E63; color: white; }
-.type-sub .type-tag { background: #9C27B0; color: white; }
-.type-team .type-tag { background: #2196F3; color: white; }
+.type-main .type-tag {
+  background: #E91E63;
+  color: white;
+}
+
+.type-sub .type-tag {
+  background: #9C27B0;
+  color: white;
+}
+
+.type-team .type-tag {
+  background: #2196F3;
+  color: white;
+}
 
 /* 타입별 카드 하이라이트 (선택사항: 외곽선으로 구분) */
-.agent-card.type-main { border-color: rgba(233, 30, 99, 0.2); }
-.agent-card.type-sub { border-color: rgba(156, 39, 176, 0.2); }
-.agent-card.type-team { border-color: rgba(33, 150, 243, 0.2); }
+.agent-card.type-main {
+  border-color: rgba(233, 30, 99, 0.2);
+}
+
+.agent-card.type-sub {
+  border-color: rgba(156, 39, 176, 0.2);
+}
+
+.agent-card.type-team {
+  border-color: rgba(33, 150, 243, 0.2);
+}
+
+/* 프로젝트가 바뀌는 지점에 마진 추가 (물리적 그룹 분리) */
+.agent-card.group-start {
+  margin-left: 20px;
+}
 
 .agent-grid.has-multiple .agent-card {
   display: flex;
@@ -310,26 +359,30 @@ body {
   filter: grayscale(100%) opacity(0.5);
 }
 
-/* 이름 뱃지 */
+/* 이름 뱃지 (캐릭터 아래쪽) */
 .agent-name {
   font-family: 'Pretendard Variable', Pretendard, sans-serif;
-  font-size: 9px;
-  font-weight: 600;
+  font-size: 10px;
+  font-weight: 700;
   color: #fff;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
-  background: rgba(0, 0, 0, 0.55);
+  background: rgba(0, 0, 0, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 8px;
-  padding: 1px 6px;
-  margin-top: 4px;
-  max-width: 78px;
+  padding: 2px 8px;
+  margin-top: -6px;
+  /* 캐릭터 라인에 살짝 걸치게 */
+  max-width: 80px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   text-align: center;
+  z-index: 10;
 }
 
 
 /* 닫기 버튼 (X) - Hover 시 보임 */
+
 .agent-close-btn,
 .agent-dismiss {
   position: absolute;
