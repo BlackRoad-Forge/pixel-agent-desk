@@ -389,19 +389,23 @@ function recoverExistingSessions() {
           require('fs').closeSync(fd);
 
           const lines = buf.toString('utf-8').split('\n').filter(l => l.trim());
-          let sessionId = null, cwd = candidate.projectPath, hasSessionEnd = false;
+          let sessionId = null, actualCwd = null, hasSessionEnd = false;
 
           for (const line of lines) {
             try {
               const obj = JSON.parse(line);
               if (obj.sessionId) sessionId = obj.sessionId;
-              if (obj.cwd) cwd = obj.cwd;
+              if (obj.cwd) actualCwd = obj.cwd;
               if (obj.subtype === 'SessionEnd') hasSessionEnd = true;
             } catch (e) { }
           }
 
           if (sessionId && !hasSessionEnd && !agentManager.getAgent(sessionId)) {
-            recoveredSessions.push({ sessionId, cwd, filePath: candidate.filePath });
+            recoveredSessions.push({
+              sessionId,
+              cwd: actualCwd || candidate.projectPath,
+              filePath: candidate.filePath
+            });
           }
         } catch (e) { }
       }
