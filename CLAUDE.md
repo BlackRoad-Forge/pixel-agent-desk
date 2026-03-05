@@ -136,7 +136,12 @@ npm run dashboard  # 대시보드 서버만 (포트 3000)
 
 ## 자동 훅 등록
 
-`npm install` 실행 시 `install.js`가 자동으로 실행되어 Claude CLI 설정 파일에 훅 스크립트를 등록합니다:
+훅 등록은 **이중으로 자동화**되어 있습니다:
+
+1. **`npm install` 시** - `install.js`가 자동 실행
+2. **`npm start` 시** - 앱 시작 시 훅 등록 상태 체크, 미등록 시 자동 등록
+
+### 동작 방식
 
 - **설정 파일:** `~/.claude/settings.json` (Windows/Linux/macOS)
 - **등록 내용:** 모든 Claude CLI 훅 이벤트에 `hook.js` 자동 등록

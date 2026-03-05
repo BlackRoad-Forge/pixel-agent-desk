@@ -9,6 +9,124 @@ const errorHandler = require('./errorHandler');
 const Ajv = require('ajv');
 const { getWindowSizeForAgents, checkSessionActive } = require('./utils');
 
+// =====================================================
+// Claude CLI 훅 자동 등록
+// =====================================================
+
+/**
+ * Claude CLI 설정 파일 경로 가져오기
+ */
+function getClaudeConfigPath() {
+  return path.join(os.homedir(), '.claude', 'settings.json');
+}
+
+/**
+ * Claude CLI 설정 파일 읽기
+ */
+function readClaudeConfig() {
+  try {
+    const configPath = getClaudeConfigPath();
+    if (fs.existsSync(configPath)) {
+      const content = fs.readFileSync(configPath, 'utf-8');
+      return JSON.parse(content);
+    }
+  } catch (error) {
+    debugLog(`[Hook] Claude 설정 읽기 실패: ${error.message}`);
+  }
+  return {};
+}
+
+/**
+ * Claude CLI 설정 파일 쓰기
+ */
+function writeClaudeConfig(config) {
+  try {
+    const configPath = getClaudeConfigPath();
+    const dir = path.dirname(configPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
+    debugLog('[Hook] Claude 설정 파일 업데이트 완료');
+    return true;
+  } catch (error) {
+    debugLog(`[Hook] Claude 설정 쓰기 실패: ${error.message}`);
+    return false;
+  }
+}
+
+/**
+ * hook.js 절대 경로 가져오기
+ */
+function getHookScriptPath() {
+  return path.join(__dirname, 'hook.js').replace(/\\/g, '/');
+}
+
+/**
+ * 훅이 이미 등록되어 있는지 확인
+ */
+function isHookRegistered() {
+  const config = readClaudeConfig();
+  const hookPath = getHookScriptPath();
+
+  if (!config.hooks) {
+    return false;
+  }
+
+  // 적어도 하나의 훅 이벤트가 우리 훅을 가리키는지 확인
+  const hookEvents = ['SessionStart', 'PreToolUse', 'PostToolUse'];
+  for (const event of hookEvents) {
+    if (config.hooks[event] && config.hooks[event].includes(hookPath)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Claude CLI 훅 자동 등록
+ */
+function registerClaudeHooks() {
+  debugLog('[Hook] Claude CLI 훅 등록 상태 확인...');
+
+  if (isHookRegistered()) {
+    debugLog('[Hook] ✓ 훅이 이미 등록되어 있습니다.');
+    return true;
+  }
+
+  debugLog('[Hook] 훅 등록 시작...');
+
+  const hookPath = getHookScriptPath();
+  const config = readClaudeConfig();
+
+  config.hooks = config.hooks || {};
+
+  // 모든 훅 이벤트 등록
+  const hookEvents = [
+    'SessionStart', 'SessionEnd', 'UserPromptSubmit',
+    'PreToolUse', 'PostToolUse', 'PostToolUseFailure',
+    'Stop', 'TaskCompleted', 'PermissionRequest', 'Notification',
+    'SubagentStart', 'SubagentStop', 'TeammateIdle',
+    'ConfigChange', 'WorktreeCreate', 'WorktreeRemove',
+    'PreCompact', 'InstructionsLoaded'
+  ];
+
+  for (const event of hookEvents) {
+    config.hooks[event] = `node "${hookPath}"`;
+  }
+
+  if (writeClaudeConfig(config)) {
+    debugLog('[Hook] ✅ Claude CLI 훅 등록 완료!');
+    console.log('\n✅ Claude CLI 훅이 자동 등록되었습니다.');
+    console.log('이제 Claude Code를 사용하면 자동으로 연결됩니다.\n');
+    return true;
+  }
+
+  debugLog('[Hook] ❌ 훅 등록 실패');
+  return false;
+}
+
 // 에러 로그 파일로 저장
 const errorLogPath = path.join(__dirname, 'startup-error.log');
 const originalConsoleError = console.error;
@@ -950,6 +1068,9 @@ function handleSessionEnd(sessionId) {
 
 app.whenReady().then(() => {
   debugLog('Pixel Agent Desk started');
+
+  // 0. Claude CLI 훅 자동 등록 (npm install 누락 대비)
+  registerClaudeHooks();
 
   // 1. 에이전트 매니저 즉시 시작 (UI 뜨기 전부터 데이터 수집)
   agentManager = new AgentManager();

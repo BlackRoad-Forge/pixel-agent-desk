@@ -24,7 +24,9 @@ Claude CLI의 Hook 이벤트를 실시간으로 수신하여 여러 에이전트
 npm install
 ```
 
-> **자동 설정**: `npm install` 실행 시 Claude CLI 설정 파일(`~/.claude/settings.json`)에 훅 스크립트가 자동으로 등록됩니다.
+> **자동 설정**:
+> - `npm install` 시 훅 자동 등록
+> - `npm start` 시 훅 미등록 상태면 자동 등록 (이중 보장)
 
 ### 2. 실행
 ```bash
