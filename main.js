@@ -15,6 +15,7 @@ const debugLog = (msg) => {
 
 let mainWindow;
 let agentManager = null;
+let keepAliveInterval = null;
 
 // =====================================================
 // 에이전트 수에 따른 동적 윈도우 크기 (P1-6)
@@ -155,11 +156,25 @@ function createWindow() {
   });
 
   // 작업표시줄 복구 폴링 (250ms)
-  setInterval(() => {
+  startKeepAlive();
+}
+
+function startKeepAlive() {
+  if (keepAliveInterval) return; // 이미 실행 중이면 중복 생성 방지
+  keepAliveInterval = setInterval(() => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.setAlwaysOnTop(true, 'screen-saver');
     }
   }, 250);
+  debugLog('[Main] Keep-alive interval started');
+}
+
+function stopKeepAlive() {
+  if (keepAliveInterval) {
+    clearInterval(keepAliveInterval);
+    keepAliveInterval = null;
+    debugLog('[Main] Keep-alive interval stopped');
+  }
 }
 
 // =====================================================
@@ -684,8 +699,30 @@ function handleSessionStart(sessionId, cwd, pid = 0, isTeammate = false, isSubag
   });
 }
 
+function cleanupAgentResources(sessionId) {
+  // 1. 플래그 정리
+  firstPreToolUseDone.delete(sessionId);
+
+  // 2. 타이머 정리
+  const timer = postToolIdleTimers.get(sessionId);
+  if (timer) {
+    clearTimeout(timer);
+    postToolIdleTimers.delete(sessionId);
+  }
+
+  // 3. PID 정리
+  sessionPids.delete(sessionId);
+
+  // 4. 생존 확인 카운터 정리 (startLivenessChecker의 missCount Map 접근을 위해 전역에서 삭제)
+  // Note: missCount는 startLivenessChecker 함수 내부 스코프에 있으므로,
+  //       생존 확인 checker에서 자연스럽게 정리됩니다.
+
+  debugLog(`[Cleanup] Resources cleared for ${sessionId.slice(0, 8)}`);
+}
+
 function handleSessionEnd(sessionId) {
-  firstPreToolUseDone.delete(sessionId);   // 플래그 정리
+  cleanupAgentResources(sessionId);  // 통합 리소스 정리
+
   if (!agentManager) return;
   const agent = agentManager.getAgent(sessionId);
   if (agent) {
@@ -835,6 +872,16 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   if (agentManager) agentManager.stop();
+  stopKeepAlive(); // 앱 종료 시 interval 정리
+
+  // 모든 Map 리소스 정리
+  firstPreToolUseDone.clear();
+  postToolIdleTimers.forEach(timer => clearTimeout(timer));
+  postToolIdleTimers.clear();
+  sessionPids.clear();
+  pendingSessionStarts.length = 0;
+
+  debugLog('[Main] All Map resources cleaned up');
 });
 
 // =====================================================

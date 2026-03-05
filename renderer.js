@@ -23,12 +23,13 @@ const ANIM_SEQUENCES = {
 
 // --- 상태별 맵핑 ---
 const stateConfig = {
-  'Working': { anim: 'working', class: 'state-working', label: 'Working...' },
-  'Thinking': { anim: 'working', class: 'state-working', label: 'Working...' },
-  'Done': { anim: 'complete', class: 'state-complete', label: 'Done!' },
-  'Waiting': { anim: 'waiting', class: 'state-waiting', label: 'Waiting...' },
-  'Error': { anim: 'alert', class: 'state-alert', label: 'Error!' },
-  'Help': { anim: 'alert', class: 'state-alert', label: 'Help!' }
+  'Working': { anim: 'working', class: 'state-working', label: '⚡ Working...' },
+  'Thinking': { anim: 'working', class: 'state-working', label: '⚡ Working...' },
+  'Done': { anim: 'complete', class: 'state-complete', label: '✓ Done!' },
+  'Waiting': { anim: 'waiting', class: 'state-waiting', label: '⏳ Waiting...' },
+  'Error': { anim: 'alert', class: 'state-alert', label: '⚠️ Error!' },
+  'Help': { anim: 'alert', class: 'state-alert', label: '⚠️ Help!' },
+  'Offline': { anim: 'waiting', class: 'state-offline', label: '💤 Offline' }
 };
 
 // --- 에이전트별 상태 관리 ---
@@ -122,6 +123,10 @@ function updateAgentState(agentId, container, agentOrState) {
   const bubble = container.querySelector('.agent-bubble');
   const character = container.querySelector('.agent-character');
 
+  // ARIA 라벨 업데이트 - 상태 변화 알림
+  const agentDisplayName = container.querySelector('.agent-name')?.textContent || 'Agent';
+  container.setAttribute('aria-label', `${agentDisplayName} - ${config.label}`);
+
   // Update container class
   container.className = `agent-card ${config.class}`;
   if (isAggregated) container.classList.add('is-aggregated');
@@ -203,15 +208,22 @@ function createAgentCard(agent) {
   card.className = 'agent-card';
   card.dataset.agentId = agent.id;
 
+  // ARIA 속성 추가 - 접근성 개선
+  card.setAttribute('role', 'article');
+  card.setAttribute('aria-label', `${agent.displayName || 'Agent'} - ${agent.state || 'Waiting'}`);
+
   // 서브에이전트 표시
   if (agent.isSubagent) {
     card.classList.add('is-subagent');
+    card.setAttribute('aria-label', `Subagent ${agent.displayName || 'Agent'} - ${agent.state || 'Waiting'}`);
   }
 
   // Create bubble
   const bubble = document.createElement('div');
   bubble.className = 'agent-bubble';
   bubble.textContent = 'Waiting...';
+  bubble.setAttribute('role', 'status');
+  bubble.setAttribute('aria-live', 'polite');
 
   // Create character
   const character = document.createElement('div');
@@ -286,6 +298,9 @@ function createAgentCard(agent) {
 
   // 캐릭터 영역에만 클릭 이벤트 (터미널 표출 및 상호작용) 할당
   character.style.cursor = 'pointer';
+  character.setAttribute('role', 'button');
+  character.setAttribute('tabindex', '0');
+  character.setAttribute('aria-label', `Focus terminal for ${agent.displayName || 'Agent'}`);
 
   // 찌르기(Poke) 상호작용 - 터미널 포커스 대신 재미있는 반응 추가
   const pokeMessages = [
@@ -366,13 +381,24 @@ function removeAgent(data) {
   const card = document.querySelector(`[data-agent-id="${data.id}"]`);
   if (!card) return;
 
-  // Clean up intervals
+  // Clean up intervals (항상 실행)
   const state = agentStates.get(data.id);
   if (state) {
-    if (state.interval) clearInterval(state.interval);
-    if (state.timerInterval) clearInterval(state.timerInterval);
-    agentStates.delete(data.id);
+    // interval 정리
+    if (state.interval) {
+      clearInterval(state.interval);
+      state.interval = null;
+    }
+    // timerInterval 정리
+    if (state.timerInterval) {
+      clearInterval(state.timerInterval);
+      state.timerInterval = null;
+    }
   }
+  // Map에서 삭제 (state가 없어도 안전하게 삭제)
+  agentStates.delete(data.id);
+
+  console.log(`[Renderer] Cleaned up agent ${data.id.slice(0, 8)} (intervals cleared)`);
 
   card.remove();
 
@@ -678,6 +704,10 @@ document.addEventListener('visibilitychange', () => {
       if (state.interval) {
         clearInterval(state.interval);
         state.interval = null;
+      }
+      if (state.timerInterval) {
+        clearInterval(state.timerInterval);
+        state.timerInterval = null;
       }
     }
   } else {
