@@ -3,7 +3,7 @@
  * AgentManager 핵심 로직 테스트
  */
 
-const AgentManager = require('../agentManager');
+const AgentManager = require('../src/agentManager');
 const EventEmitter = require('events');
 
 describe('AgentManager', () => {

@@ -13,7 +13,7 @@ const {
   formatTime,
   getWindowSizeForAgents,
   checkSessionActive
-} = require('../utils');
+} = require('../src/utils');
 const fs = require('fs');
 
 // Mock fs module

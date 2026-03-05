@@ -9,9 +9,11 @@
 - ✅ **훅 최적화:** HTTP 훅 전환 (hook.js 프로세스 스폰 제거), tool_name/notification_type/team 필드 추출
 - ✅ **PID 정확도:** transcript_path 기반 lsof PID 탐지, 크로스플랫폼 지원 (Windows PowerShell + Linux/macOS pgrep/lsof)
 - ✅ **Liveness 간소화:** 타이머 기반 정리 제거, PID 기반 즉시 판단 (2초 주기)
+- ✅ **리팩토링:** src/ 폴더 구조 정리, main.js→7개 모듈 분할, renderer.js→7개 모듈 분할
 
 ## Known Issues
 - **ESC 중단 시 Thinking 상태 유지:** 사용자가 ESC로 Claude 응답을 중단하면 Stop 훅이 발생하지 않아 아바타가 Thinking 상태에 머무름. CLI 프로세스는 살아있으므로 PID 기반 Liveness Checker로도 감지 불가.
+- **터미널 포커스 순서 꼬임:** 다중 Claude 인스턴스 실행 시 아바타 클릭 → 터미널 포커스가 엉뚱한 터미널로 갈 수 있음. HTTP 훅 전환 후 Claude CLI가 `_pid`를 payload에 포함하지 않아 `detectClaudePidByTranscript()` → 폴백(`detectClaudePidsFallback`)에서 미등록 PID 중 첫 번째를 할당하므로 PID↔세션 매핑이 비결정적. `find-file-owner.ps1`(Restart Manager) 성공 시에는 정확하나 실패 시 꼬임. Claude CLI가 자기 PID를 훅 payload에 넣어주지 않는 한 완벽한 해결 어려움.
 
 ## 프로젝트 개요
 
@@ -31,7 +33,7 @@ Claude CLI 훅 이벤트를 HTTP POST로 수신하고, 에이전트별 상태(Wa
 ## 핵심 아키텍처
 
 ```
-Claude CLI ──HTTP hook──▶ POST(:47821) ──main.js:processHookEvent()
+Claude CLI ──HTTP hook──▶ POST(:47821) ──hookProcessor.processHookEvent()
                                                     │
                                     ┌────────────────┤
                                     ▼                ▼
@@ -40,24 +42,54 @@ Claude CLI ──HTTP hook──▶ POST(:47821) ──main.js:processHookEvent(
                                 │
                     ┌───────────┼───────────┐
                     ▼           ▼           ▼
-              renderer.js   dashboard   sessionScanner
+              renderer/*    dashboard   sessionScanner
              (픽셀 아바타)   (웹 UI)    (JSONL 분석)
 ```
 
 ## 파일 구조 & 역할
 
+모든 소스 파일은 `src/` 아래에 위치. HTML/CSS/에셋은 루트에 유지.
+
+### 메인 프로세스 (`src/main/`)
+
 | 파일 | 역할 | 수정 시 주의사항 |
 |------|------|----------------|
-| `main.js` | Electron 메인 프로세스, 훅 서버, Liveness Checker | **1300줄 이상** — 함수 단위로 정확히 수정할 것 |
-| `renderer.js` | 픽셀 아바타 애니메이션, 그리드 레이아웃 | `updateAgentState()` switch 문에 새 상태 추가 시 기존 애니메이션 유지 |
-| `agentManager.js` | 에이전트 상태 관리 (Single Source of Truth) | 이벤트명 변경 금지: `agent-added`, `agent-updated`, `agent-removed` |
-| `sessionScanner.js` | JSONL 파싱 → 토큰/비용 보완 (60초 주기) | 비동기 I/O 필수, 메인 스레드 차단 금지 |
-| `hook.js` | Claude CLI stdin → HTTP POST 브릿지 | 47줄 — 작지만 에러 시 전체 파이프라인 중단됨 |
-| `sessionend_hook.js` | SessionEnd 이벤트 JSONL 직접 기록 | transcript_path에서 sessionId 파싱 |
-| `dashboard-server.js` | REST API + WebSocket 대시보드 서버 | 포트 3000 |
-| `dashboardAdapter.js` | AgentManager → Dashboard 포맷 변환 | STATE_MAP 변경 시 dashboard.html과 동기화 |
-| `preload.js` | Electron IPC 브릿지 | 채널명 변경 시 renderer.js와 동기화 필수 |
-| `errorHandler.js` | 에러 캡처 & 분류 | 에러 코드 E001~E010 체계 사용 |
+| `src/main.js` | 오케스트레이터 (~230줄) — 모듈 초기화, 이벤트 연결, 앱 생명주기 | 각 모듈의 팩토리/init 호출 순서 유지 |
+| `src/main/hookRegistration.js` | Claude CLI 설정 읽기/쓰기/훅 등록 | Node builtins만 의존 |
+| `src/main/hookServer.js` | HTTP 훅 서버 (스키마, AJV, listen) | `additionalProperties: true` 유지 |
+| `src/main/hookProcessor.js` | processHookEvent() switch + 헬퍼 | case 순서와 firstPreToolUseDone 로직 유지 |
+| `src/main/livenessChecker.js` | PID 탐지, transcript 기반, 2초 주기 체크 | sessionPids Map 소유 |
+| `src/main/sessionPersistence.js` | state.json 저장/복구 | agentManager, sessionPids 주입받음 |
+| `src/main/windowManager.js` | 메인윈도우, 대시보드윈도우, keep-alive | preload 경로: `path.join(__dirname, '..', 'preload.js')` |
+| `src/main/ipcHandlers.js` | 모든 ipcMain.on/handle 등록, focusTerminalByPid | 채널명 변경 금지 |
+
+### 렌더러 (`src/renderer/`) — 브라우저 `<script>` 태그 순서 로드
+
+| 파일 | 역할 | 수정 시 주의사항 |
+|------|------|----------------|
+| `src/renderer/config.js` | 상수, 스프라이트 설정, 상태 맵 | 글로벌 스코프 — 다른 renderer 파일에서 참조 |
+| `src/renderer/animationManager.js` | rAF 루프, drawFrame, playAnimation | SHEET, ANIM_SEQUENCES 참조 |
+| `src/renderer/agentCard.js` | createAgentCard, updateAgentState | stateConfig, playAnimation 참조 |
+| `src/renderer/agentGrid.js` | add/update/remove/layout/resize | agentGrid, updateAgentState 참조 |
+| `src/renderer/uiComponents.js` | 대시보드 버튼, 키보드, 컨텍스트 메뉴 | electronAPI 사용 |
+| `src/renderer/errorUI.js` | 에러 토스트 UI | electronAPI.executeRecoveryAction 사용 |
+| `src/renderer/init.js` | 초기화, visibility 핸들링, 앱 진입점 | 모든 renderer 모듈이 먼저 로드되어야 함 |
+
+### 공유 모듈 (`src/`)
+
+| 파일 | 역할 | 수정 시 주의사항 |
+|------|------|----------------|
+| `src/agentManager.js` | 에이전트 상태 관리 (SSoT) | 이벤트명 변경 금지: `agent-added`, `agent-updated`, `agent-removed` |
+| `src/sessionScanner.js` | JSONL 파싱 → 토큰/비용 보완 (60초 주기) | 비동기 I/O 필수, 메인 스레드 차단 금지 |
+| `src/errorHandler.js` | 에러 캡처 & 분류 | 에러 코드 E001~E010 체계 사용 |
+| `src/dashboardAdapter.js` | AgentManager → Dashboard 포맷 변환 | STATE_MAP 변경 시 dashboard.html과 동기화 |
+| `src/dashboard-server.js` | REST API + WebSocket 대시보드 서버 | 포트 3000 |
+| `src/utils.js` | 유틸리티 함수 | 순수 함수 모듈 |
+| `src/preload.js` | Electron IPC 브릿지 | 채널명 변경 시 renderer와 동기화 필수 |
+| `src/dashboardPreload.js` | 대시보드 IPC 브릿지 | |
+| `src/hook.js` | Claude CLI stdin → HTTP POST 브릿지 | 에러 시 전체 파이프라인 중단됨 |
+| `src/sessionend_hook.js` | SessionEnd JSONL 직접 기록 | transcript_path에서 sessionId 파싱 |
+| `src/install.js` | npm install 시 훅 자동 등록 | postinstall 스크립트 |
 
 ## 상태 모델
 
@@ -94,14 +126,14 @@ SessionEnd → 에이전트 제거
      : filePath;
    ```
 4. **에이전트 수 제한 없음** — 서브에이전트/팀 모드로 50개 이상도 가능. 하드 리밋 추가하지 말 것
-5. **processHookEvent() 수정 시** — switch 문의 case 순서와 타이머(postToolIdleTimers) 정리 로직 유지
+5. **processHookEvent() 수정 시** — `src/main/hookProcessor.js`의 switch 문 case 순서와 firstPreToolUseDone 로직 유지
 6. **문서 업데이트 규칙** — 개발 진행 후(새로운 기능 구현, 아키텍처 변경 등) 반드시 `CLAUDE.md`의 상단 진행 상태와 `docs/v3-architecture.md` 문서를 동기화/업데이트해야 함
 
 ### 피해야 할 것
 
 - `fs.readFileSync`를 메인 이벤트 루프에서 큰 파일에 사용하지 말 것 (sessionScanner는 별도 주기)
 - `additionalProperties: false`를 hookSchema에 설정하지 말 것 (Claude가 새 필드 추가할 수 있음)
-- renderer.js에서 DOM 직접 조작 시 `requestAnimationFrame` 바깥에서 하지 말 것
+- `src/renderer/` 파일에서 DOM 직접 조작 시 `requestAnimationFrame` 바깥에서 하지 말 것
 - 에러 발생 시 `return null` 대신 `errorHandler.capture()` 사용
 
 ## 훅 이벤트 필드 (Claude CLI 공식)

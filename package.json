@@ -2,15 +2,15 @@
   "name": "pixel-agent-desk",
   "version": "2.0.0",
   "description": "Claude CLI JSONL logs를 실시간으로 감시하여 멀티 에이전트를 픽셀 아바타로 시각화",
-  "main": "main.js",
+  "main": "src/main.js",
   "scripts": {
-    "postinstall": "node install.js",
+    "postinstall": "node src/install.js",
     "start": "electron .",
     "dev": "electron . --dev",
     "test": "jest",
     "test:coverage": "jest --coverage",
     "test:watch": "jest --watch",
-    "dashboard": "node dashboard-server.js"
+    "dashboard": "node src/dashboard-server.js"
   },
   "keywords": [
     "electron",
