@@ -34,6 +34,11 @@ const stateConfig = {
 // --- 에이전트별 상태 관리 ---
 const agentStates = new Map(); // agentId -> { animName, frameIdx, interval, startTime, timerInterval, lastFormattedTime }
 
+// --- 아바타 관리 ---
+let availableAvatars = [];
+let idleAvatar = 'avatar_0.png';
+const agentAvatars = new Map(); // agentId -> random avatar path
+
 // --- 유틸리티 함수 ---
 
 function formatTime(ms) {
@@ -199,6 +204,19 @@ function createAgentCard(agent) {
   // Create character
   const character = document.createElement('div');
   character.className = 'agent-character';
+
+  // 에이전트 별 랜덤 아바타 지정
+  let assignedAvatar = agentAvatars.get(agent.id);
+  if (!assignedAvatar && availableAvatars.length > 0) {
+    assignedAvatar = availableAvatars[Math.floor(Math.random() * availableAvatars.length)];
+    agentAvatars.set(agent.id, assignedAvatar);
+  } else if (!assignedAvatar) {
+    assignedAvatar = idleAvatar || 'avatar_0.png';
+  }
+
+  if (assignedAvatar) {
+    character.style.backgroundImage = `url('./public/characters/${assignedAvatar}')`;
+  }
 
   // dismissBtn 관련 코드 삭제됨
 
@@ -378,45 +396,112 @@ function updateGridLayout() {
   if (cards.length === 0) {
     agentGrid.classList.remove('has-multiple');
     if (idleContainer) idleContainer.style.display = 'flex';
+    // Remove all old wrappers
+    while (agentGrid.firstChild) agentGrid.removeChild(agentGrid.firstChild);
     return;
   }
 
   if (idleContainer) idleContainer.style.display = 'none';
   agentGrid.classList.add('has-multiple');
 
-  // 같은 프로젝트끼리, 그 안에서 Main -> Sub -> Team 순으로 정렬
-  cards.sort((a, b) => {
-    const agentA = [...agentStates.keys()].find(id => id.startsWith(a.dataset.agentId)) || a.dataset.agentId; // 실제 ID 매칭
-    const dataA = window.lastAgents?.find(ag => ag.id === a.dataset.agentId);
-    const dataB = window.lastAgents?.find(ag => ag.id === b.dataset.agentId);
-
-    if (!dataA || !dataB) return 0;
-
-    // 1. 프로젝트명 정렬
-    const projA = dataA.projectPath || '';
-    const projB = dataB.projectPath || '';
-    if (projA !== projB) return projA.localeCompare(projB);
-
-    // 2. 타입 정렬 (Main < Sub < Team)
-    const score = (d) => d.isSubagent ? 1 : (d.isTeammate ? 2 : 0);
-    return score(dataA) - score(dataB);
+  const cardDataList = cards.map(c => {
+    return {
+      card: c,
+      data: window.lastAgents?.find(ag => ag.id === c.dataset.agentId) || { id: c.dataset.agentId }
+    };
   });
 
-  // DOM 순서 재배치 및 그룹별 시각적 분리 (마진 추가)
+  const mains = cardDataList.filter(item => !item.data.isSubagent && !item.data.isTeammate);
+  const others = cardDataList.filter(item => item.data.isSubagent || item.data.isTeammate);
+  const fallbackSubList = [...others];
+
+  mains.sort((a, b) => (a.data.projectPath || '').localeCompare(b.data.projectPath || ''));
+
+  // Clear grid contents nicely (preserve elements but detach them)
+  while (agentGrid.firstChild) {
+    agentGrid.removeChild(agentGrid.firstChild);
+  }
+
   let lastProject = null;
-  cards.forEach(card => {
-    const data = window.lastAgents?.find(ag => ag.id === card.dataset.agentId);
-    const currProject = data ? data.projectPath : null;
+  let mainIndex = 0;
 
-    if (lastProject !== null && currProject !== lastProject) {
-      card.classList.add('group-start');
-    } else {
-      card.classList.remove('group-start');
+  mains.forEach(mainItem => {
+    const proj = mainItem.data.projectPath;
+    if (lastProject !== null && proj !== lastProject) {
+      mainIndex = 0;
     }
-    lastProject = currProject;
+    lastProject = proj;
 
-    agentGrid.appendChild(card);
+    // 메인 에이전트 넘버링 처리
+    const nameBadge = mainItem.card.querySelector('.agent-name');
+    const typeTag = mainItem.card.querySelector('.type-tag');
+
+    const label = `Main_${mainIndex}`;
+    if (typeTag) typeTag.textContent = label;
+    if (nameBadge) {
+      if (nameBadge.textContent === 'Main' || nameBadge.textContent === 'Agent' || nameBadge.style.display === 'none' || nameBadge.textContent.startsWith('Main_')) {
+        nameBadge.textContent = label;
+        nameBadge.style.display = 'block';
+      }
+    }
+    mainIndex++;
+
+    // 서브에이전트 찾기
+    const mySubs = [];
+    for (let i = fallbackSubList.length - 1; i >= 0; i--) {
+      const sub = fallbackSubList[i];
+      // parentId가 일치하거나 (확실), 아직 parentId가 없지만 같은 프로젝트인 경우
+      if (sub.data.parentId === mainItem.data.id || (!sub.data.parentId && sub.data.projectPath === proj)) {
+        mySubs.push(sub);
+        fallbackSubList.splice(i, 1);
+      }
+    }
+
+    mySubs.reverse(); // 탐색 순서 복구
+
+    if (mySubs.length > 0) {
+      const partyDiv = document.createElement('div');
+      partyDiv.className = 'agent-party';
+
+      const mainRow = document.createElement('div');
+      mainRow.className = 'agent-party-main';
+      mainRow.appendChild(mainItem.card);
+      partyDiv.appendChild(mainRow);
+
+      const subRow = document.createElement('div');
+      subRow.className = 'agent-party-subs';
+      mySubs.forEach(s => {
+        // 원래 이름 복구
+        if (s.card) {
+          s.card.classList.remove('group-start');
+        }
+        subRow.appendChild(s.card);
+      });
+      partyDiv.appendChild(subRow);
+
+      agentGrid.appendChild(partyDiv);
+    } else {
+      const soloDiv = document.createElement('div');
+      soloDiv.className = 'agent-solo';
+      mainItem.card.classList.remove('group-start');
+      soloDiv.appendChild(mainItem.card);
+      agentGrid.appendChild(soloDiv);
+    }
   });
+
+  // 고아 서브에이전트가 남은 경우 (예외처리)
+  if (fallbackSubList.length > 0) {
+    const orphanedDiv = document.createElement('div');
+    orphanedDiv.className = 'agent-party';
+    const subRow = document.createElement('div');
+    subRow.className = 'agent-party-subs';
+    fallbackSubList.forEach(s => {
+      s.card.classList.remove('group-start');
+      subRow.appendChild(s.card);
+    });
+    orphanedDiv.appendChild(subRow);
+    agentGrid.appendChild(orphanedDiv);
+  }
 }
 
 // --- 이벤트 리스너 등록 ---
@@ -427,9 +512,29 @@ async function init() {
     return;
   }
 
+  // 아바타 리스트 로드
+  if (window.electronAPI.getAvatars) {
+    try {
+      const files = await window.electronAPI.getAvatars();
+      const validFiles = files.filter(f => f.match(/\.(png|jpe?g|webp|gif)$/i));
+      const zero = validFiles.find(f => f.includes('_0.') || f === 'avatar_00.png' || f === 'avatar_0.png');
+      if (zero) idleAvatar = zero;
+
+      availableAvatars = validFiles.filter(f => f !== idleAvatar);
+      if (availableAvatars.length === 0 && idleAvatar) {
+        availableAvatars.push(idleAvatar);
+      }
+    } catch (e) {
+      console.warn('Failed to load avatars', e);
+    }
+  }
+
   // 로드 전 즉시 대기 아바타 표시
   if (idleContainer) {
     idleContainer.style.display = 'flex';
+    if (idleCharacter && idleAvatar) {
+      idleCharacter.style.backgroundImage = `url('./public/characters/${idleAvatar}')`;
+    }
     startIdleAnimation();
   }
 

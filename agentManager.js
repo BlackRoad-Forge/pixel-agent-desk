@@ -77,6 +77,7 @@ class AgentManager extends EventEmitter {
       jsonlPath: entry.jsonlPath || (existingAgent ? existingAgent.jsonlPath : null),
       isSubagent: entry.isSubagent || (existingAgent ? existingAgent.isSubagent : false),
       isTeammate: entry.isTeammate || (existingAgent ? existingAgent.isTeammate : false),
+      parentId: entry.parentId || (existingAgent ? existingAgent.parentId : null),
       state: newState,
       activeStartTime,
       lastDuration,

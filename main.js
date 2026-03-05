@@ -18,18 +18,60 @@ let agentManager = null;
 // =====================================================
 // 에이전트 수에 따른 동적 윈도우 크기 (P1-6)
 // =====================================================
-function getWindowSizeForAgents(count) {
+function getWindowSizeForAgents(agentsOrCount) {
+  let count = 0;
+  let agents = [];
+  if (Array.isArray(agentsOrCount)) {
+    agents = agentsOrCount;
+    count = agents.length;
+  } else {
+    count = agentsOrCount || 0;
+  }
+
   if (count <= 1) return { width: 220, height: 210 };
 
-  // 멀티 에이전트: 바탕 여백(OUTER) 넉넉히 부여하여 그룹 마진 및 줄바꿈 혼선 방지 (40 -> 120)
   const CARD_W = 90;
   const GAP = 10;
-  const OUTER = 120;
-  const ROW_H = 160; // 추가되는 행당 높이 여유분
-  const BASE_H = 210; // 첫 번째 행(기본) 최소 높이
-
-  // 한 줄에 최대 5명까지만 배치, 그 이상은 줄바꿈 처리하여 높이 확장
+  const OUTER = 120 + 20; // 팀 디자인 여백 감안
+  const ROW_H = 160;
+  const BASE_H = 210;
   const maxCols = 5;
+
+  if (agents.length > 0) {
+    const groups = {};
+    agents.forEach(a => {
+      const p = a.projectPath || 'default';
+      if (!groups[p]) groups[p] = [];
+      groups[p].push(a);
+    });
+
+    let teamRows = 0;
+    let soloCount = 0;
+    let maxColsInRow = 0;
+
+    for (const group of Object.values(groups)) {
+      const isTeam = group.some(a => a.isSubagent || a.isTeammate);
+      if (isTeam) {
+        teamRows += Math.ceil(group.length / maxCols);
+        maxColsInRow = Math.max(maxColsInRow, Math.min(group.length, maxCols));
+      } else {
+        soloCount += group.length;
+      }
+    }
+
+    const soloRows = Math.ceil(soloCount / maxCols);
+    if (soloCount > 0) {
+      maxColsInRow = Math.max(maxColsInRow, Math.min(soloCount, maxCols));
+    }
+
+    const totalRows = teamRows + soloRows;
+    const width = Math.max(220, maxColsInRow * CARD_W + (maxColsInRow - 1) * GAP + OUTER);
+    const height = BASE_H + Math.max(0, totalRows - 1) * ROW_H + (teamRows * 30); // 팀 그룹 여백(padding) 감안
+
+    return { width, height };
+  }
+
+  // Fallback (agents 배열이 없는 경우 단순 count로 계산)
   const cols = Math.min(count, maxCols);
   const rows = Math.ceil(count / maxCols);
 
@@ -39,11 +81,12 @@ function getWindowSizeForAgents(count) {
   return { width, height };
 }
 
-function resizeWindowForAgents(count) {
+function resizeWindowForAgents(agentsOrCount) {
   if (!mainWindow || mainWindow.isDestroyed()) return;
-  const { width, height } = getWindowSizeForAgents(count);
+  const { width, height } = getWindowSizeForAgents(agentsOrCount);
   mainWindow.setSize(width, height);
-  console.log(`[Main] Window → ${width}×${height} (${count} agents)`);
+  const info = Array.isArray(agentsOrCount) ? agentsOrCount.length : agentsOrCount;
+  console.log(`[Main] Window → ${width}×${height} (${info} agents based layout)`);
 }
 
 // =====================================================
@@ -298,7 +341,7 @@ function startHookServer() {
 
           case 'SubagentStart': {
             const subId = data.subagent_session_id || data.agent_id;
-            if (subId) handleSessionStart(subId, data.cwd || '');
+            if (subId) handleSessionStart(subId, data.cwd || '', 0, false, true, 'Working', sessionId);
             break;
           }
 
@@ -386,63 +429,111 @@ function recoverExistingSessions() {
       candidates.sort((a, b) => b.mtime - a.mtime);
 
       const recoveredSessions = [];
+      let matchedMainCount = 0;
+
       for (const candidate of candidates) {
-        if (recoveredSessions.length >= livePids.length) break; // 살아있는 프로세스 수만큼만 복구
+        if (matchedMainCount >= livePids.length) break; // 살아있는 프로세스 수만큼 찾음
 
         try {
-          const readSize = Math.min(candidate.size, 8192); // 파일 끝 8KB
+          const readSize = Math.min(candidate.size, 65536); // 파일 끝 64KB로 넉넉하게 스캔
           const buf = Buffer.alloc(readSize);
           const fd = require('fs').openSync(candidate.filePath, 'r');
           require('fs').readSync(fd, buf, 0, readSize, candidate.size - readSize);
           require('fs').closeSync(fd);
 
           const lines = buf.toString('utf-8').split('\n').filter(l => l.trim());
-          let sessionId = null, actualCwd = null, hasSessionEnd = false;
+          const sessionMap = new Map();
 
           for (const line of lines) {
             try {
               const obj = JSON.parse(line);
-              if (obj.sessionId) sessionId = obj.sessionId;
-              if (obj.cwd) actualCwd = obj.cwd;
-              if (obj.subtype === 'SessionEnd') hasSessionEnd = true;
+              const event = obj.subtype || obj.hook_event_name;
+              const sId = obj.sessionId || obj.session_id;
+
+              if (sId) {
+                if (!sessionMap.has(sId)) {
+                  sessionMap.set(sId, {
+                    sessionId: sId,
+                    cwd: obj.cwd || candidate.projectPath,
+                    filePath: candidate.filePath,
+                    hasSessionEnd: false,
+                    isSubagent: false,
+                    isTeammate: false,
+                    state: 'Waiting' // 기본값
+                  });
+                }
+                const s = sessionMap.get(sId);
+                if (obj.cwd) s.cwd = obj.cwd;
+
+                if (event === 'SessionEnd') s.hasSessionEnd = true;
+                else if (event === 'UserPromptSubmit' || event === 'PreToolUse' || event === 'PostToolUse') s.state = 'Working';
+                else if (event === 'Stop' || event === 'TaskCompleted') s.state = 'Done';
+                else if (event === 'TeammateIdle') { s.state = 'Waiting'; s.isTeammate = true; }
+                else if (event === 'PostToolUseFailure' || event === 'PermissionRequest' || event === 'Notification') s.state = 'Help';
+                else if (event === 'SubagentStart') {
+                  const subId = obj.subagent_session_id || obj.agent_id;
+                  if (subId) {
+                    if (!sessionMap.has(subId)) {
+                      sessionMap.set(subId, { sessionId: subId, cwd: s.cwd, filePath: candidate.filePath, hasSessionEnd: false, isSubagent: true, isTeammate: false, state: 'Working', parentId: sId });
+                    } else {
+                      sessionMap.get(subId).isSubagent = true;
+                      sessionMap.get(subId).state = 'Working';
+                      sessionMap.get(subId).parentId = sId;
+                    }
+                  }
+                } else if (event === 'SubagentStop') {
+                  const subId = obj.subagent_session_id || obj.agent_id;
+                  if (subId && sessionMap.has(subId)) sessionMap.get(subId).hasSessionEnd = true;
+                }
+              }
             } catch (e) { }
           }
 
-          if (sessionId && !hasSessionEnd && !agentManager.getAgent(sessionId)) {
-            recoveredSessions.push({
-              sessionId,
-              cwd: actualCwd || candidate.projectPath,
-              filePath: candidate.filePath
-            });
+          let foundMainInFile = false;
+          const activeSessionsInFile = Array.from(sessionMap.values()).filter(s => !s.hasSessionEnd && !agentManager.getAgent(s.sessionId));
+
+          for (const s of activeSessionsInFile) {
+            recoveredSessions.push(s);
+            if (!s.isSubagent && !s.isTeammate) {
+              s.needsPid = true; // 메인 에이전트라서 WMI PID 부여 타겟
+              foundMainInFile = true;
+            }
           }
+
+          if (foundMainInFile) matchedMainCount++;
+
         } catch (e) { }
       }
 
       // 3. 복구된 세션 등록 + PID 매핑
-      for (let i = 0; i < recoveredSessions.length; i++) {
-        const { sessionId, cwd, filePath } = recoveredSessions[i];
-        const pid = livePids[i]; // WMI로 얻은 실제 claude PID
+      let pidIndex = 0;
+      for (const s of recoveredSessions) {
+        const { sessionId, cwd, filePath, state, isSubagent, isTeammate, needsPid, parentId } = s;
+
+        let pid = 0;
+        if (needsPid && pidIndex < livePids.length) {
+          pid = livePids[pidIndex++];
+          sessionPids.set(sessionId, pid);
+        }
 
         const displayName = cwd ? require('path').basename(cwd) : 'Agent';
 
-        // 실제 PID 저장 (생사확인 + 터미널 포커스용)
-        sessionPids.set(sessionId, pid);
-
-        // 기존 세션은 초기화 완료 → PreToolUse 첫 번째 무시 로직 우회
+        // 기존 세션은 초기화 완료 (탐색 무시)
         firstPreToolUseDone.set(sessionId, true);
 
         const recoveredAgent = agentManager.updateAgent({
           sessionId,
           projectPath: cwd,
           displayName,
-          state: 'Waiting',
+          state: state, // 로그 읽어낸 마지막 상태 반영
           jsonlPath: filePath,
-          isTeammate: false, // 기본적으로 메인 세션으로 간주하되, 훅이 오면 전환됨
-          isSubagent: false
+          isTeammate,
+          isSubagent,
+          parentId
         }, 'recover');
-        if (recoveredAgent) recoveredAgent.firstSeen = Date.now() - 30000;
 
-        debugLog(`[Recover] Restored: ${sessionId.slice(0, 8)} (${displayName}) pid=${pid}`);
+        if (recoveredAgent) recoveredAgent.firstSeen = Date.now() - 30000;
+        debugLog(`[Recover] Restored: ${sessionId.slice(0, 8)} (${displayName}) state=${state} sub=${isSubagent} pid=${pid || 'none'}`);
       }
       debugLog(`[Recover] Done — ${recoveredSessions.length} session(s) with real PIDs`);
 
@@ -498,15 +589,15 @@ function startLivenessChecker() {
 }
 
 
-function handleSessionStart(sessionId, cwd, pid = 0, isTeammate = false) {
+function handleSessionStart(sessionId, cwd, pid = 0, isTeammate = false, isSubagent = false, initialState = 'Waiting', parentId = null) {
   if (!agentManager) {
-    pendingSessionStarts.push({ sessionId, cwd, ts: Date.now(), isTeammate });
+    pendingSessionStarts.push({ sessionId, cwd, ts: Date.now(), isTeammate, isSubagent, initialState, parentId });
     debugLog(`[Hook] SessionStart queued: ${sessionId.slice(0, 8)}`);
     return;
   }
   const displayName = cwd ? path.basename(cwd) : 'Agent';
-  agentManager.updateAgent({ sessionId, projectPath: cwd, displayName, state: 'Waiting', jsonlPath: null, isTeammate }, 'http');
-  debugLog(`[Hook] SessionStart → agent: ${sessionId.slice(0, 8)} (${displayName}) ${isTeammate ? '[Team]' : ''}`);
+  agentManager.updateAgent({ sessionId, projectPath: cwd, displayName, state: initialState, jsonlPath: null, isTeammate, isSubagent, parentId }, 'http');
+  debugLog(`[Hook] SessionStart → agent: ${sessionId.slice(0, 8)} (${displayName}) ${isTeammate ? '[Team]' : ''} ${isSubagent ? '[Sub]' : ''} (Parent: ${parentId ? parentId.slice(0, 8) : 'none'})`);
 
   if (pid > 0) {
     sessionPids.set(sessionId, pid);
@@ -565,13 +656,16 @@ app.whenReady().then(() => {
   recoverExistingSessions();
 
   // 4. 테스트용 에이전트 (Main, Sub, Team 골고루)
-  const testSubagents = [
-    { sessionId: 'test-main-1', projectPath: 'E:/projects/core-engine', displayName: 'Main Service', state: 'Working', isSubagent: false, isTeammate: false },
-    { sessionId: 'test-sub-1', projectPath: 'E:/projects/core-engine', displayName: 'Refactor Helper', state: 'Working', isSubagent: true, isTeammate: false },
-    { sessionId: 'test-team-1', projectPath: 'E:/projects/web-ui', displayName: 'UI Architect', state: 'Waiting', isSubagent: false, isTeammate: true },
-    { sessionId: 'test-team-2', projectPath: 'E:/projects/web-ui', displayName: 'CSS Specialist', state: 'Working', isSubagent: false, isTeammate: true }
-  ];
-  testSubagents.forEach(agent => agentManager.updateAgent(agent, 'test'));
+  const ENABLE_TEST_AGENTS = false; // 테스트 에이전트 온/오프 체크 옵션
+  if (ENABLE_TEST_AGENTS) {
+    const testSubagents = [
+      { sessionId: 'test-main-1', projectPath: 'E:/projects/core-engine', displayName: 'Main Service', state: 'Working', isSubagent: false, isTeammate: false },
+      { sessionId: 'test-sub-1', projectPath: 'E:/projects/core-engine', displayName: 'Refactor Helper', state: 'Working', isSubagent: true, isTeammate: false },
+      { sessionId: 'test-team-1', projectPath: 'E:/projects/web-ui', displayName: 'UI Architect', state: 'Waiting', isSubagent: false, isTeammate: true },
+      { sessionId: 'test-team-2', projectPath: 'E:/projects/web-ui', displayName: 'CSS Specialist', state: 'Working', isSubagent: false, isTeammate: true }
+    ];
+    testSubagents.forEach(agent => agentManager.updateAgent(agent, 'test'));
+  }
 
   // 5. UI 생성
   createWindow();
@@ -584,27 +678,29 @@ app.whenReady().then(() => {
     agentManager.on('agent-added', (agent) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('agent-added', agent);
-        resizeWindowForAgents(agentManager.getAgentCount());
+        resizeWindowForAgents(agentManager.getAllAgents());
       }
     });
 
     agentManager.on('agent-updated', (agent) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('agent-updated', agent);
+        // 상태 변화로 Sub/Team이 생기면 창 크기가 달라질 수 있으므로 업데이트
+        resizeWindowForAgents(agentManager.getAllAgents());
       }
     });
 
     agentManager.on('agent-removed', (data) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('agent-removed', data);
-        resizeWindowForAgents(agentManager.getAgentCount());
+        resizeWindowForAgents(agentManager.getAllAgents());
       }
     });
 
     agentManager.on('agents-cleaned', (data) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('agents-cleaned', data);
-        resizeWindowForAgents(agentManager.getAgentCount());
+        resizeWindowForAgents(agentManager.getAllAgents());
       }
     });
 
@@ -615,12 +711,12 @@ app.whenReady().then(() => {
       allAgents.forEach(agent => {
         mainWindow.webContents.send('agent-added', agent);
       });
-      resizeWindowForAgents(allAgents.length);
+      resizeWindowForAgents(allAgents);
     }
 
     while (pendingSessionStarts.length > 0) {
-      const { sessionId, cwd, isTeammate } = pendingSessionStarts.shift();
-      handleSessionStart(sessionId, cwd, 0, isTeammate);
+      const { sessionId, cwd, isTeammate, isSubagent, initialState, parentId } = pendingSessionStarts.shift();
+      handleSessionStart(sessionId, cwd, 0, isTeammate, isSubagent, initialState || 'Waiting', parentId);
     }
   });
 
@@ -658,6 +754,21 @@ app.on('before-quit', () => {
 
 ipcMain.on('get-work-area', (event) => {
   event.reply('work-area-response', screen.getPrimaryDisplay().workArea);
+});
+
+ipcMain.on('get-avatars', (event) => {
+  try {
+    const charsDir = path.join(__dirname, 'public', 'characters');
+    if (fs.existsSync(charsDir)) {
+      const files = fs.readdirSync(charsDir);
+      event.reply('avatars-response', files);
+    } else {
+      event.reply('avatars-response', []);
+    }
+  } catch (e) {
+    debugLog(`[Main] get-avatars error: ${e.message}`);
+    event.reply('avatars-response', []);
+  }
 });
 
 ipcMain.on('constrain-window', (event, bounds) => {

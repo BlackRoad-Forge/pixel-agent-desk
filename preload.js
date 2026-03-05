@@ -25,6 +25,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.send('get-all-agents');
     return new Promise(resolve => ipcRenderer.once('all-agents-response', (_, d) => resolve(d)));
   },
+  getAvatars: () => {
+    ipcRenderer.send('get-avatars');
+    return new Promise(resolve => ipcRenderer.once('avatars-response', (_, d) => resolve(d)));
+  },
   getAgentStats: () => {
     ipcRenderer.send('get-agent-stats');
     return new Promise(resolve => ipcRenderer.once('agent-stats-response', (_, d) => resolve(d)));
