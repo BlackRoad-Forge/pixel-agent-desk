@@ -74,12 +74,12 @@ class ErrorHandler {
   }
 
   /**
-   * 에러를 캡처하고 처리합니다.
+   * P1-2: 에러를 캡처하고 처리합니다 (비동기 로깅)
    * @param {Error|object} error - 에러 객체
    * @param {object} context - 추가 컨텍스트
    * @returns {object} 정규화된 에러 컨텍스트
    */
-  capture(error, context = {}) {
+  async capture(error, context = {}) {
     try {
       const errorContext = this.normalize(error, context);
 
@@ -95,8 +95,8 @@ class ErrorHandler {
         this.deduplicationSet.delete(dedupKey);
       }, 5000);
 
-      // 로그 기록
-      this.logToFile(errorContext);
+      // P1-2: 비동기 로그 기록
+      await this.logToFile(errorContext);
 
       // Renderer로 전송
       this.sendToRenderer(errorContext);
@@ -142,9 +142,9 @@ class ErrorHandler {
   }
 
   /**
-   * 로그 파일에 기록
+   * P1-2: 로그 파일에 기록 (비동기)
    */
-  logToFile(errorContext) {
+  async logToFile(errorContext) {
     if (!this.currentLogFile) return;
 
     try {
@@ -159,7 +159,9 @@ class ErrorHandler {
       };
 
       const logLine = JSON.stringify(logEntry) + '\n';
-      fs.appendFileSync(this.currentLogFile, logLine, 'utf8');
+
+      // P1-2: 비동기 파일 쓰기 (fs.promises 사용)
+      await fs.promises.appendFile(this.currentLogFile, logLine, 'utf8');
     } catch (e) {
       console.error('[ErrorHandler] Failed to write log:', e);
     }

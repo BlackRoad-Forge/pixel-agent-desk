@@ -3,33 +3,55 @@
  * 에러 핸들러 핵심 기능 테스트
  */
 
-const errorHandler = require('../errorHandler');
+// Mock fs module before requiring errorHandler
 const fs = require('fs');
-const path = require('path');
 
-// Mock fs module
-jest.mock('fs');
+jest.mock('fs', () => ({
+  existsSync: jest.fn(),
+  readdirSync: jest.fn(),
+  statSync: jest.fn(),
+  readFileSync: jest.fn(),
+  appendFileSync: jest.fn(),
+  unlinkSync: jest.fn(),
+  mkdirSync: jest.fn(),
+  promises: {
+    appendFile: jest.fn()
+  }
+}));
+
 jest.mock('electron', () => ({
   app: {
     getPath: jest.fn(() => '/tmp/userdata')
   }
 }));
 
+// Configure mocks before loading errorHandler
+fs.existsSync.mockReturnValue(true);
+fs.readdirSync.mockReturnValue([]);
+fs.statSync.mockReturnValue({ size: 1024, mtime: { getTime: () => Date.now() } });
+fs.readFileSync.mockReturnValue('');
+fs.appendFileSync.mockImplementation(() => {});
+fs.unlinkSync.mockImplementation(() => {});
+fs.mkdirSync.mockImplementation(() => {});
+fs.promises.appendFile.mockResolvedValue(undefined);
+
+const errorHandler = require('../errorHandler');
+
 describe('ErrorHandler', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // Re-configure default mock values
     fs.existsSync.mockReturnValue(true);
     fs.readdirSync.mockReturnValue([]);
-    fs.statSync.mockReturnValue({ size: 1024, mtime: new Date() });
-    fs.appendFileSync.mockImplementation(() => {});
+    fs.statSync.mockReturnValue({ size: 1024, mtime: { getTime: () => Date.now() } });
   });
 
   describe('capture', () => {
-    test('normalizes error object', () => {
+    test('normalizes error object', async () => {
       const error = new Error('Test error');
       const context = { code: 'E001', category: 'FILE_IO' };
 
-      const result = errorHandler.capture(error, context);
+      const result = await errorHandler.capture(error, context);
 
       expect(result).toHaveProperty('id');
       expect(result).toHaveProperty('timestamp');
@@ -39,22 +61,22 @@ describe('ErrorHandler', () => {
       expect(result.severity).toBe('error');
     });
 
-    test('generates unique ID for each error', () => {
-      const error1 = errorHandler.capture(new Error('Error 1'), { code: 'E001' });
-      const error2 = errorHandler.capture(new Error('Error 2'), { code: 'E002' });
+    test('generates unique ID for each error', async () => {
+      const error1 = await errorHandler.capture(new Error('Error 1'), { code: 'E001' });
+      const error2 = await errorHandler.capture(new Error('Error 2'), { code: 'E002' });
 
       expect(error1.id).not.toBe(error2.id);
       expect(error1.id).toMatch(/^err_/);
     });
 
-    test('deduplicates identical errors within 5 seconds', () => {
+    test('deduplicates identical errors within 5 seconds', async () => {
       errorHandler.deduplicationSet.clear();
 
       const error = new Error('Duplicate error');
       const context = { code: 'E001' };
 
-      const result1 = errorHandler.capture(error, context);
-      const result2 = errorHandler.capture(error, context);
+      const result1 = await errorHandler.capture(error, context);
+      const result2 = await errorHandler.capture(error, context);
 
       // Deduplication should work based on code:message
       // Both results should have same structure even if IDs differ
@@ -63,41 +85,41 @@ describe('ErrorHandler', () => {
       expect(result1.userMessage).toBe(result2.userMessage);
     });
 
-    test('logs error to file', () => {
+    test('logs error to file', async () => {
       const error = new Error('Log test');
-      errorHandler.capture(error, { code: 'E001' });
+      await errorHandler.capture(error, { code: 'E001' });
 
-      expect(fs.appendFileSync).toHaveBeenCalled();
+      expect(fs.promises.appendFile).toHaveBeenCalled();
     });
 
-    test('increments error count', () => {
+    test('increments error count', async () => {
       errorHandler.resetErrorCount();
       const initialCount = errorHandler.errorCount;
 
-      errorHandler.capture(new Error('Error 1'), { code: 'E001' });
-      errorHandler.capture(new Error('Error 2'), { code: 'E002' });
+      await errorHandler.capture(new Error('Error 1'), { code: 'E001' });
+      await errorHandler.capture(new Error('Error 2'), { code: 'E002' });
 
       expect(errorHandler.errorCount).toBe(initialCount + 2);
     });
   });
 
   describe('normalize', () => {
-    test('handles error with code', () => {
+    test('handles error with code', async () => {
       const error = new Error('Test error');
       const context = { code: 'E001' };
 
-      const result = errorHandler.normalize(error, context);
+      const result = await errorHandler.capture(error, context);
 
       expect(result.code).toBe('E001');
       expect(result.userMessage).toBeDefined();
       expect(result.explanation).toBeDefined();
     });
 
-    test('handles error without code', () => {
+    test('handles error without code', async () => {
       const error = new Error('Test error');
       const context = { code: 'E999' }; // Unknown code
 
-      const result = errorHandler.normalize(error, context);
+      const result = await errorHandler.capture(error, context);
 
       expect(result.code).toBe('E999');
       expect(result.userMessage).toBeDefined();
@@ -105,46 +127,46 @@ describe('ErrorHandler', () => {
       expect(result.userMessage).toBeTruthy();
     });
 
-    test('includes stack trace', () => {
+    test('includes stack trace', async () => {
       const error = new Error('Test error');
       const context = { code: 'E001' };
 
-      const result = errorHandler.normalize(error, context);
+      const result = await errorHandler.capture(error, context);
 
       expect(result.stack).toBeDefined();
       expect(result.stack).toContain('Test error');
     });
 
-    test('maps severity correctly', () => {
+    test('maps severity correctly', async () => {
       const error = new Error('Test error');
 
-      const fatalResult = errorHandler.normalize(error, { severity: 'fatal' });
+      const fatalResult = await errorHandler.capture(error, { severity: 'fatal', code: 'E001' });
       expect(fatalResult.severity).toBe('fatal');
 
-      const warningResult = errorHandler.normalize(error, { severity: 'warning' });
+      const warningResult = await errorHandler.capture(error, { severity: 'warning', code: 'E002' });
       expect(warningResult.severity).toBe('warning');
     });
   });
 
   describe('generateId', () => {
-    test('generates ID with prefix', () => {
+    test('generates ID with prefix', async () => {
       const error = new Error('Test');
-      const result = errorHandler.capture(error, { code: 'E001' });
+      const result = await errorHandler.capture(error, { code: 'E001' });
 
       expect(result.id).toMatch(/^err_\d+_[a-z0-9]+$/);
     });
 
-    test('generates unique IDs', () => {
+    test('generates unique IDs', async () => {
       const error = new Error('Test');
-      const result1 = errorHandler.capture(error, { code: 'E001' });
-      const result2 = errorHandler.capture(error, { code: 'E002' });
+      const result1 = await errorHandler.capture(error, { code: 'E001' });
+      const result2 = await errorHandler.capture(error, { code: 'E002' });
 
       expect(result1.id).not.toBe(result2.id);
     });
   });
 
   describe('logToFile', () => {
-    test('writes JSON log entry', () => {
+    test('writes JSON log entry', async () => {
       const errorContext = {
         id: 'err_test',
         timestamp: '2026-03-05T00:00:00.000Z',
@@ -152,23 +174,21 @@ describe('ErrorHandler', () => {
         message: 'Test error'
       };
 
-      errorHandler.logToFile(errorContext);
+      await errorHandler.logToFile(errorContext);
 
-      expect(fs.appendFileSync).toHaveBeenCalledWith(
+      expect(fs.promises.appendFile).toHaveBeenCalledWith(
         expect.any(String),
         expect.stringContaining('"message":"Test error"'),
         'utf8'
       );
     });
 
-    test('handles write errors gracefully', () => {
-      fs.appendFileSync.mockImplementation(() => {
-        throw new Error('Write failed');
-      });
+    test('handles write errors gracefully', async () => {
+      fs.promises.appendFile.mockRejectedValue(new Error('Write failed'));
 
       const error = new Error('Test');
-      expect(() => errorHandler.capture(error, { code: 'E001' }))
-        .not.toThrow();
+      await expect(errorHandler.capture(error, { code: 'E001' }))
+        .resolves.toBeDefined();
     });
   });
 
@@ -207,8 +227,8 @@ describe('ErrorHandler', () => {
   });
 
   describe('resetErrorCount', () => {
-    test('resets error counter to zero', () => {
-      errorHandler.capture(new Error('Error 1'), { code: 'E001' });
+    test('resets error counter to zero', async () => {
+      await errorHandler.capture(new Error('Error 1'), { code: 'E001' });
       expect(errorHandler.errorCount).toBeGreaterThan(0);
 
       errorHandler.resetErrorCount();
@@ -307,17 +327,17 @@ describe('ErrorHandler', () => {
   });
 
   describe('recovery actions', () => {
-    test('error context includes recovery actions', () => {
+    test('error context includes recovery actions', async () => {
       const error = new Error('Test error');
-      const result = errorHandler.capture(error, { code: 'E001' });
+      const result = await errorHandler.capture(error, { code: 'E001' });
 
       expect(result.recovery).toBeDefined();
       expect(Array.isArray(result.recovery)).toBe(true);
     });
 
-    test('each recovery action has type and label', () => {
+    test('each recovery action has type and label', async () => {
       const error = new Error('Test error');
-      const result = errorHandler.capture(error, { code: 'E003' });
+      const result = await errorHandler.capture(error, { code: 'E003' });
 
       result.recovery.forEach(action => {
         expect(action).toHaveProperty('type');

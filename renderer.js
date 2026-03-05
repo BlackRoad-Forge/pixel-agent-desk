@@ -33,7 +33,95 @@ const stateConfig = {
 };
 
 // --- 에이전트별 상태 관리 ---
-const agentStates = new Map(); // agentId -> { animName, frameIdx, interval, startTime, timerInterval, lastFormattedTime }
+const agentStates = new Map(); // agentId -> { animName, frameIdx, rafId, startTime, timerInterval, lastFormattedTime }
+
+// --- P1-1: 통합 requestAnimationFrame 애니메이션 매니저 ---
+const animationManager = {
+  animations: new Map(), // agentId -> { agentId, element, animName, sequence, frameIdx, lastTime }
+
+  start(agentId, element, animName) {
+    // Stop existing animation for this agent
+    this.stop(agentId);
+
+    const sequence = ANIM_SEQUENCES[animName];
+    if (!sequence) return;
+
+    const animation = {
+      agentId,
+      element,
+      animName,
+      sequence,
+      frameIdx: 0,
+      lastTime: performance.now()
+    };
+
+    this.animations.set(agentId, animation);
+
+    // Start animation loop
+    this.loop(agentId);
+  },
+
+  loop(agentId) {
+    const animation = this.animations.get(agentId);
+    if (!animation) return;
+
+    const rafId = requestAnimationFrame((currentTime) => {
+      if (!this.animations.has(agentId)) {
+        return;
+      }
+
+      // Calculate frame based on FPS
+      const targetFPS = animation.sequence.fps;
+      const frameDuration = 1000 / targetFPS;
+
+      // Only advance frame if enough time has passed
+      if (currentTime - animation.lastTime >= frameDuration) {
+        // Update frame
+        animation.frameIdx++;
+
+        if (animation.frameIdx >= animation.sequence.frames.length) {
+          if (animation.sequence.loop) {
+            animation.frameIdx = 0;
+          } else {
+            this.stop(agentId);
+            return;
+          }
+        }
+
+        // Draw frame
+        const col = animation.frameIdx % 9;
+        const row = Math.floor(animation.frameIdx / 9);
+        const x = col * -48;
+        const y = row * -64;
+        animation.element.style.backgroundPosition = `${x}px ${y}px`;
+
+        animation.lastTime = currentTime;
+      }
+
+      // Continue loop
+      this.loop(agentId);
+    });
+
+    // Store RAF ID for cleanup
+    const state = agentStates.get(agentId) || {};
+    state.rafId = rafId; // Note: we can't actually store RAF ID, but we track via animations Map
+    agentStates.set(agentId, state);
+  },
+
+  stop(agentId) {
+    const animation = this.animations.get(agentId);
+    if (animation) {
+      this.animations.delete(agentId);
+    }
+
+    // Also cleanup any remaining intervals
+    const state = agentStates.get(agentId);
+    if (state && state.interval) {
+      clearInterval(state.interval);
+      state.interval = null;
+    }
+  }
+};
 
 // --- 아바타 관리 ---
 let availableAvatars = [];
@@ -59,51 +147,12 @@ function drawFrame(element, frameIndex) {
 }
 
 function playAnimation(agentId, element, animName) {
-  const sequence = ANIM_SEQUENCES[animName];
-  if (!sequence) return;
+  // P1-1: Use requestAnimationFrame instead of setInterval
+  animationManager.start(agentId, element, animName);
 
+  // Update state for compatibility
   const state = agentStates.get(agentId) || {};
-  const prevAnim = state.animName;
-
-  if (prevAnim === animName) return; // Already playing this animation
-
-  // Clear previous interval
-  if (state.interval) {
-    clearInterval(state.interval);
-  }
-
-  // Update state
   state.animName = animName;
-  state.frameIdx = 0;
-  agentStates.set(agentId, state);
-
-  // Draw first frame immediately
-  drawFrame(element, sequence.frames[0]);
-
-  // Start animation loop
-  const interval = setInterval(() => {
-    const currentState = agentStates.get(agentId);
-    if (!currentState) {
-      clearInterval(interval);
-      return;
-    }
-
-    currentState.frameIdx++;
-
-    if (currentState.frameIdx >= sequence.frames.length) {
-      if (sequence.loop) {
-        currentState.frameIdx = 0;
-      } else {
-        clearInterval(interval);
-        return;
-      }
-    }
-
-    drawFrame(element, sequence.frames[currentState.frameIdx]);
-  }, 1000 / sequence.fps);
-
-  // Store interval in state
-  state.interval = interval;
   agentStates.set(agentId, state);
 }
 

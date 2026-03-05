@@ -5,6 +5,7 @@ const fs = require('fs');
 const AgentManager = require('./agentManager');
 const { adaptAgentToMissionControl } = require('./missionControlAdapter');
 const errorHandler = require('./errorHandler');
+const Ajv = require('ajv');
 
 // Debug logging to file
 const debugLog = (msg) => {
@@ -517,6 +518,41 @@ function processHookEvent(data) {
 function startHookServer() {
   const http = require('http');
 
+  // P1-3: JSON Schema for hook validation
+  const hookSchema = {
+    type: 'object',
+    required: ['event'],
+    properties: {
+      event: {
+        type: 'string',
+        enum: ['SessionStart', 'SessionEnd', 'PreToolUse', 'PostToolUse', 'TaskCompleted', 'PermissionRequest', 'SubagentStart', 'SubagentStop']
+      },
+      sessionId: {
+        type: 'string',
+        minLength: 1
+      },
+      cwd: {
+        type: 'string'
+      },
+      state: {
+        type: 'string'
+      },
+      tool: {
+        type: 'string'
+      },
+      _pid: {
+        type: 'number'
+      },
+      _timestamp: {
+        type: 'number'
+      }
+    },
+    additionalProperties: true
+  };
+
+  const ajv = new Ajv();
+  const validateHook = ajv.compile(hookSchema);
+
   const server = http.createServer((req, res) => {
     if (req.method !== 'POST' || req.url !== '/hook') {
       res.writeHead(404); res.end(); return;
@@ -530,6 +566,20 @@ function startHookServer() {
 
       try {
         const data = JSON.parse(body);
+
+        // P1-3: Validate JSON schema
+        const isValid = validateHook(data);
+        if (!isValid) {
+          errorHandler.capture(new Error('Invalid hook data'), {
+            code: 'E010',
+            category: 'VALIDATION',
+            severity: 'WARNING',
+            details: validateHook.errors
+          });
+          debugLog(`[Hook] Validation error: ${JSON.stringify(validateHook.errors)}`);
+          return;
+        }
+
         processHookEvent(data);
       } catch (e) {
         errorHandler.capture(e, {
