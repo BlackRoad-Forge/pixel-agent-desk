@@ -519,7 +519,12 @@ function requestDynamicResize() {
   if (!window.electronAPI || !window.electronAPI.resizeWindow) return;
   const container = document.getElementById('agent-grid');
   if (container) {
-    window.electronAPI.resizeWindow({ height: container.offsetHeight });
+    // scrollWidth/Height includes padding but not borders/margins usually
+    // offsetWidth/Height includes borders and padding
+    window.electronAPI.resizeWindow({
+      width: container.scrollWidth,
+      height: container.scrollHeight
+    });
   }
 }
 

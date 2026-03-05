@@ -99,17 +99,26 @@ function resizeWindowForAgents(agentsOrCount) {
 // =====================================================
 ipcMain.on('resize-window', (e, size) => {
   if (mainWindow && !mainWindow.isDestroyed()) {
-    const { width, height } = mainWindow.getBounds();
-    const newWidth = Math.max(220, size.width || width);
-    const newHeight = Math.max(260, (size.height || height) + 40); // 40px padding bottom
+    const { width, height, y } = mainWindow.getBounds();
+
+    // 렌더러에서 보내온 실측 사이즈 반영 (가로/세로 모두)
+    // 약간의 안전 여백(Padding) 부여 및 최소 사이즈 보장
+    const newWidth = Math.max(220, Math.ceil(size.width ? size.width + 30 : width));
+    const newHeight = Math.max(280, Math.ceil(size.height ? size.height + 40 : height));
+
+    if (newWidth === width && newHeight === height) return;
 
     // Bottom-anchor logic: calculate Y position change
-    // If window becomes taller, y should move up by the difference
     const diffHeight = newHeight - height;
-    const { y } = mainWindow.getBounds();
     const newY = Math.max(0, y - diffHeight);
 
-    mainWindow.setBounds({ width: newWidth, height: newHeight, y: newY });
+    mainWindow.setBounds({
+      width: newWidth,
+      height: newHeight,
+      y: newY
+    });
+
+    debugLog(`[Main] IPC Resize → ${newWidth}x${newHeight} (y: ${newY})`);
   }
 });
 

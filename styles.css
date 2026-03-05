@@ -13,14 +13,24 @@ body {
   justify-content: center;
   align-items: flex-end;
   /* 말풍선 크기 증가 시 캐릭터가 밑으로 밀리는 현상 방지. 아래쪽으로 정렬 */
-  overflow: visible;
+  overflow: hidden !important;
   -webkit-app-region: no-drag;
   pointer-events: none;
   /* 배경은 클릭 통과 */
   min-width: 220px;
-  min-height: 190px;
+  min-height: 280px;
+  height: 100vh;
   padding-bottom: 5px;
   /* 바닥에 딱 붙지 않도록 약간의 여백 추가 */
+}
+
+html {
+  overflow: hidden !important;
+  height: 100vh;
+}
+
+::-webkit-scrollbar {
+  display: none !important;
 }
 
 /* ════════════════════════════════════════
@@ -37,13 +47,15 @@ body {
 
 .agent-grid.has-multiple {
   display: grid;
-  grid-template-columns: repeat(10, 90px);
+  /* 가로 10명까지 지원하되, 현재 에이전트 수에 맞춰 폭이 가변적으로 변하도록 설정 */
+  grid-template-columns: repeat(auto-fill, 90px);
   grid-auto-rows: auto;
   gap: 10px 10px;
   justify-content: center;
   align-items: end;
-  /* Characters align exactly at the bottom of the grid row */
   padding: 10px;
+  width: fit-content;
+  max-width: 100%;
 }
 
 /* ════════════════════════════════════════
