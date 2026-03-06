@@ -10,7 +10,9 @@ function createHookProcessor({ agentManager, sessionPids, debugLog, detectClaude
   // 내부 상태
   const pendingSessionStarts = [];
   const firstPreToolUseDone = new Map(); // sessionId → boolean
+  const recentlyDeleted = new Map(); // sessionId → timestamp (유령 에이전트 재생성 방지)
   const MAX_TRACKED_SESSIONS = 500;
+  const RECENTLY_DELETED_TTL = 30000; // 30초간 재생성 차단
 
   function processHookEvent(data) {
     const event = data.hook_event_name;
@@ -19,10 +21,18 @@ function createHookProcessor({ agentManager, sessionPids, debugLog, detectClaude
 
     debugLog(`[Hook] ${event} session=${sessionId.slice(0, 8)}`);
 
+    // TTL 만료된 recentlyDeleted 항목 정리
+    const now = Date.now();
+    for (const [id, ts] of recentlyDeleted) {
+      if (now - ts > RECENTLY_DELETED_TTL) recentlyDeleted.delete(id);
+      else break; // Map은 삽입 순서이므로 이후는 더 최신
+    }
+
     // SessionStart가 누락되어도 첫 이벤트에서 즉시 에이전트 생성 (범용 fallback)
+    // 단, 최근 삭제된 세션은 재생성하지 않음 (서브에이전트 종료 후 늦은 이벤트 방지)
     if (agentManager && event !== 'SessionStart' && event !== 'SessionEnd') {
       const existing = agentManager.getAgent(sessionId);
-      if (!existing) {
+      if (!existing && !recentlyDeleted.has(sessionId)) {
         debugLog(`[Hook] Auto-create from ${event}: ${sessionId.slice(0, 8)}`);
         handleSessionStart(sessionId, data.cwd || '', 0, false, false, 'Waiting', null, {
           jsonlPath: data.transcript_path || null,
@@ -284,6 +294,13 @@ function createHookProcessor({ agentManager, sessionPids, debugLog, detectClaude
   function handleSessionEnd(sessionId) {
     cleanupAgentResources(sessionId);
 
+    // 최근 삭제 목록에 등록 (늦은 이벤트의 auto-create 방지)
+    recentlyDeleted.set(sessionId, Date.now());
+    if (recentlyDeleted.size > MAX_TRACKED_SESSIONS) {
+      const oldest = recentlyDeleted.keys().next().value;
+      recentlyDeleted.delete(oldest);
+    }
+
     if (!agentManager) return;
     const agent = agentManager.getAgent(sessionId);
     if (agent) {
@@ -303,6 +320,7 @@ function createHookProcessor({ agentManager, sessionPids, debugLog, detectClaude
 
   function cleanup() {
     firstPreToolUseDone.clear();
+    recentlyDeleted.clear();
     pendingSessionStarts.length = 0;
   }
 
