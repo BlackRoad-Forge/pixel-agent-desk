@@ -62,14 +62,15 @@ function detectClaudePidByTranscript(jsonlPath, callback) {
 function detectClaudePidsFallback(callback) {
   const { execFile } = require('child_process');
   if (process.platform === 'win32') {
-    const psCmd = `Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like '*claude*' -and ($_.Name -eq 'node.exe' -or $_.Name -eq 'claude.exe') } | Select-Object -ExpandProperty ProcessId`;
+    // node.exe만 검색 (Claude Desktop App의 claude.exe 제외)
+    const psCmd = `Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq 'node.exe' -and $_.CommandLine -like '*claude*' } | Select-Object -ExpandProperty ProcessId`;
     execFile('powershell.exe', ['-NoProfile', '-Command', psCmd], { timeout: 6000 }, (err, stdout) => {
       if (err || !stdout) return callback(null);
       const pids = stdout.trim().split('\n').map(p => parseInt(p.trim(), 10)).filter(p => !isNaN(p) && p > 0);
       callback(pids.length > 0 ? pids : null);
     });
   } else {
-    execFile('pgrep', ['-f', 'claude'], { timeout: 3000 }, (err, stdout) => {
+    execFile('pgrep', ['-f', 'node.*claude'], { timeout: 3000 }, (err, stdout) => {
       if (err || !stdout) return callback(null);
       const pids = stdout.trim().split('\n').map(p => parseInt(p.trim(), 10)).filter(p => !isNaN(p) && p > 0);
       callback(pids.length > 0 ? pids : null);
@@ -79,13 +80,8 @@ function detectClaudePidsFallback(callback) {
 
 // PID 미등록 에이전트 재탐지 (중복 실행 방지)
 const _pidRetryRunning = new Set();
-const MAX_PID_RETRY_ENTRIES = 200;
 function retryPidDetection(sessionId, agentManager, debugLog) {
   if (_pidRetryRunning.has(sessionId) || sessionPids.has(sessionId)) return;
-  // 무한 증가 방지
-  if (_pidRetryRunning.size >= MAX_PID_RETRY_ENTRIES) {
-    _pidRetryRunning.clear();
-  }
   _pidRetryRunning.add(sessionId);
 
   const agent = agentManager ? agentManager.getAgent(sessionId) : null;
@@ -112,12 +108,9 @@ function retryPidDetection(sessionId, agentManager, debugLog) {
 function startLivenessChecker({ agentManager, debugLog }) {
   const INTERVAL = 2000;   // 2초
   const GRACE_MS = 10000;  // 등록 후 10초 유예
-  let isScanning = false;
 
   setInterval(async () => {
-    if (!agentManager || isScanning) return;
-    isScanning = true;
-    try {
+    if (!agentManager) return;
     for (const agent of agentManager.getAllAgents()) {
       if (agent.firstSeen && Date.now() - agent.firstSeen < GRACE_MS) continue;
 
@@ -162,11 +155,6 @@ function startLivenessChecker({ agentManager, debugLog }) {
         sessionPids.delete(agent.id);
         agentManager.removeAgent(agent.id);
       }
-    }
-    } catch (e) {
-      debugLog(`[Live] Scan error: ${e.message}`);
-    } finally {
-      isScanning = false;
     }
   }, INTERVAL);
 }

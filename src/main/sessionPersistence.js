@@ -6,9 +6,43 @@
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
+const { execFileSync } = require('child_process');
 
 function getPersistedStatePath() {
   return path.join(os.homedir(), '.pixel-agent-desk', 'state.json');
+}
+
+/**
+ * PID가 실제 Claude Code CLI 프로세스인지 확인
+ * Claude Desktop App (WindowsApps/Claude.app)은 제외
+ */
+function isClaudeProcess(pid) {
+  try {
+    if (process.platform === 'win32') {
+      const result = execFileSync('powershell.exe', [
+        '-NoProfile', '-Command',
+        `$p = Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}" -ErrorAction SilentlyContinue; if ($p) { "$($p.Name)|$($p.CommandLine)" }`
+      ], { timeout: 5000, encoding: 'utf-8' });
+      if (!result) return false;
+      const lower = result.toLowerCase();
+      if (!lower.includes('claude')) return false;
+      // Claude Desktop App 제외 (WindowsApps 경로)
+      if (lower.includes('windowsapps')) return false;
+      // node.exe로 실행되는 Claude Code CLI만 허용
+      return lower.startsWith('node.exe|');
+    } else {
+      const result = execFileSync('ps', ['-p', String(pid), '-o', 'command='],
+        { timeout: 3000, encoding: 'utf-8' });
+      if (!result) return false;
+      const lower = result.toLowerCase();
+      if (!lower.includes('claude')) return false;
+      // Claude Desktop App 제외 (macOS .app 번들)
+      if (lower.includes('claude.app')) return false;
+      return true;
+    }
+  } catch (e) {
+    return false;
+  }
 }
 
 function savePersistedState({ agentManager, sessionPids }) {
@@ -44,18 +78,22 @@ function recoverExistingSessions({ agentManager, sessionPids, firstPreToolUseDon
     for (const agent of savedAgents) {
       const pid = savedPids.get(agent.id);
 
-      let isAlive = false;
-      if (pid) {
-        try {
-          process.kill(pid, 0);
-          isAlive = true;
-        } catch (e) {
-          isAlive = false;
-        }
+      if (!pid) {
+        debugLog(`[Recover] Skipped agent (no pid): ${agent.id.slice(0, 8)}`);
+        continue;
       }
 
-      if (!isAlive) {
+      // PID 존재 확인
+      try {
+        process.kill(pid, 0);
+      } catch (e) {
         debugLog(`[Recover] Skipped dead agent (pid gone): ${agent.id.slice(0, 8)}`);
+        continue;
+      }
+
+      // PID가 실제 Claude 프로세스인지 확인 (Windows PID 재사용 방지)
+      if (!isClaudeProcess(pid)) {
+        debugLog(`[Recover] Skipped agent (pid=${pid} is not claude): ${agent.id.slice(0, 8)}`);
         continue;
       }
 
