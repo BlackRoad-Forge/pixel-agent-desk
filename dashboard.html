@@ -68,6 +68,32 @@
       /* Desktop app feel */
     }
 
+    /* ─── Custom Scrollbar ─── */
+    ::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: var(--color-bg);
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--color-border);
+      border: 2px solid var(--color-bg);
+      border-radius: 5px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--color-text-dark);
+    }
+
+    /* For Firefox */
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: var(--color-border) var(--color-bg);
+    }
+
     /* ─── Layout ─── */
     .app-layout {
       display: flex;
@@ -284,7 +310,8 @@
       grid-template-columns: 2fr 1fr;
       gap: 24px;
       margin-bottom: 24px;
-      height: calc(100vh - 220px);
+      height: calc(100vh - 200px);
+      /* Fixed height to allow internal scrolling */
       min-height: 500px;
     }
 
@@ -319,6 +346,12 @@
       padding: 20px;
       flex: 1;
       overflow-y: auto;
+      overflow-x: hidden;
+    }
+
+    /* Specific scroll behavior for Agent Roster */
+    .agent-roster-panel .panel-body {
+      max-height: 100%;
     }
 
     /* Office Canvas Panel */
@@ -329,7 +362,8 @@
       align-items: center;
       justify-content: center;
       position: relative;
-      overflow: auto;
+      /* show whole canvas without internal scrolls */
+      overflow: visible;
     }
 
     #office-canvas {
@@ -769,7 +803,7 @@
             </div>
 
             <!-- Agent List -->
-            <div class="panel">
+            <div class="panel agent-roster-panel">
               <div class="panel-header">
                 System Roster
               </div>

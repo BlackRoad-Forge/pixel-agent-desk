@@ -106,11 +106,11 @@ function createWindowManager({ agentManager, sessionScanner, heatmapScanner, deb
     try {
       const { width, height } = screen.getPrimaryDisplay().workAreaSize;
 
-      // Map(864) + sidebar(140) + padding = 1060, height: 80% of screen
-      const minDashW = 1060;
-      const minDashH = 800;
-      const dashW = Math.min(Math.max(minDashW, Math.floor(width * 0.6)), width - 40);
-      const dashH = Math.min(Math.max(minDashH, Math.floor(height * 0.8)), height - 40);
+      // Map(864) + sidebar(240) + padding = 1104+, height: generous for pixel art
+      const minDashW = 1280;
+      const minDashH = 900;
+      const dashW = Math.min(Math.max(minDashW, Math.floor(width * 0.9)), width - 20);
+      const dashH = Math.min(Math.max(minDashH, Math.floor(height * 0.9)), height - 20);
 
       dashboardWindow = new BrowserWindow({
         width: dashW,
