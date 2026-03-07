@@ -4,7 +4,7 @@
  */
 
 const path = require('path');
-const { MODEL_PRICING, DEFAULT_PRICING, roundCost } = require('../pricing');
+const { MODEL_PRICING, DEFAULT_PRICING, roundCost, getContextWindowSize } = require('../pricing');
 
 function createHookProcessor({ agentManager, sessionPids, debugLog, detectClaudePidByTranscript }) {
   // Internal state
@@ -46,12 +46,16 @@ function createHookProcessor({ agentManager, sessionPids, debugLog, detectClaude
         if (sessionSource !== 'startup' && agentManager) {
           const existing = agentManager.getAgent(sessionId);
           if (existing) {
-            agentManager.updateAgent({
+            const compactUpdate = {
               ...existing, sessionId, state: 'Waiting',
               jsonlPath: sessionMeta.jsonlPath || existing.jsonlPath,
               model: sessionMeta.model || existing.model,
               source: sessionSource,
-            }, 'hook');
+            };
+            if (sessionSource === 'compact') {
+              compactUpdate.tokenUsage = { ...(existing.tokenUsage || {}), contextPercent: 0 };
+            }
+            agentManager.updateAgent(compactUpdate, 'hook');
             debugLog(`[Hook] SessionStart (${sessionSource}) → updated existing agent ${sessionId.slice(0, 8)}`);
             break;
           }
@@ -119,9 +123,12 @@ function createHookProcessor({ agentManager, sessionPids, debugLog, detectClaude
               const outputTokens = cur.outputTokens + (tokenUsage.output_tokens || 0);
               const pricing = MODEL_PRICING[agent.model] || DEFAULT_PRICING;
               const estimatedCost = inputTokens * pricing.input + outputTokens * pricing.output;
+              const ctxWindow = getContextWindowSize(agent.model);
+              const latestInput = tokenUsage.input_tokens || 0;
+              const contextPercent = ctxWindow > 0 ? Math.min(100, Math.round((latestInput / ctxWindow) * 100)) : 0;
               agentManager.updateAgent({
                 ...agent, sessionId, state: 'Thinking', currentTool: null,
-                tokenUsage: { inputTokens, outputTokens, estimatedCost: roundCost(estimatedCost) }
+                tokenUsage: { inputTokens, outputTokens, estimatedCost: roundCost(estimatedCost), contextPercent }
               }, 'hook');
             } else {
               agentManager.updateAgent({ ...agent, sessionId, state: 'Thinking', currentTool: null }, 'hook');

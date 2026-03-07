@@ -491,6 +491,56 @@
       font-weight: 500;
     }
 
+    /* ─── Context Gauge (approximate) ─── */
+    .mc-context-gauge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.65rem;
+      opacity: 0.7;
+      padding-top: 6px;
+    }
+
+    .mc-context-gauge .ctx-label {
+      font-family: var(--font-mono);
+      font-style: italic;
+      color: var(--color-text-dark);
+      white-space: nowrap;
+    }
+
+    .mc-context-gauge .ctx-track {
+      flex: 1;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.06);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .mc-context-gauge .ctx-fill {
+      height: 100%;
+      border-radius: 2px;
+      background: repeating-linear-gradient(
+        90deg,
+        currentColor 0px,
+        currentColor 3px,
+        transparent 3px,
+        transparent 5px
+      );
+      transition: width 0.4s ease;
+    }
+
+    .mc-context-gauge .ctx-fill.ctx-low { color: var(--color-primary); }
+    .mc-context-gauge .ctx-fill.ctx-mid { color: var(--color-warning); }
+    .mc-context-gauge .ctx-fill.ctx-high { color: var(--color-error); }
+
+    .mc-context-gauge .ctx-val {
+      font-family: var(--font-mono);
+      font-style: italic;
+      color: var(--color-text-dark);
+      min-width: 28px;
+      text-align: right;
+    }
+
     /* ─── Heatmap / History ─── */
     .heatmap-panel {
       padding: 24px;
@@ -1040,6 +1090,11 @@
       const tokens = formatNum((ag.tokenUsage?.inputTokens || 0) + (ag.tokenUsage?.outputTokens || 0));
       const cost = (ag.tokenUsage?.estimatedCost || 0).toFixed(4);
 
+      const ctxPct = ag.tokenUsage?.contextPercent;
+      const hasCtx = ctxPct != null;
+      const ctxColor = !hasCtx ? '' : ctxPct > 85 ? 'ctx-high' : ctxPct > 60 ? 'ctx-mid' : 'ctx-low';
+      const ctxValText = hasCtx ? `~${ctxPct}%` : '--';
+
       const html = `
         <div class="mc-agent-header">
           <div class="mc-agent-name">${ag.name || 'Agent'} ${typeHtml}</div>
@@ -1049,6 +1104,11 @@
         <div class="mc-agent-metrics">
           <span>TX: <span class="mc-metric-val">${tokens}</span> tok</span>
           <span>$<span class="mc-metric-val">${cost}</span></span>
+        </div>
+        <div class="mc-context-gauge" title="Approximate context window usage (estimated from input tokens)">
+          <span class="ctx-label">~ctx</span>
+          <div class="ctx-track"><div class="ctx-fill ${ctxColor}" style="width:${hasCtx ? ctxPct : 0}%"></div></div>
+          <span class="ctx-val">${ctxValText}</span>
         </div>
       `;
 
