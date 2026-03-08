@@ -88,8 +88,8 @@ html {
   display: block;
   overflow: hidden;
   background-image: url('./public/characters/avatar_0.webp');
-  background-size: 432px 256px;
-  /* 1x native: 9cols*48=432, 4rows*64=256 */
+  background-size: 384px 576px;
+  /* 1x native: 8cols*48=384, 9rows*64=576 */
   background-repeat: no-repeat;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
@@ -499,7 +499,7 @@ html {
   display: block;
   overflow: hidden;
   background-image: url('./public/characters/avatar_0.webp');
-  background-size: 432px 256px;
+  background-size: 384px 576px;
   background-repeat: no-repeat;
   image-rendering: pixelated;
   will-change: background-position;
@@ -1087,7 +1087,7 @@ html {
 .mini-avatar {
   width: 24px;
   height: 32px;
-  background-size: 216px 128px; /* 50% of 432x256 */
+  background-size: 192px 288px; /* 50% of 384x576 */
   background-repeat: no-repeat;
   image-rendering: pixelated;
   image-rendering: crisp-edges;

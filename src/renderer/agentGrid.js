@@ -294,7 +294,7 @@ function drawFrameOn(el, frameIndex) {
   if (!el) return;
   const col = frameIndex % SHEET.cols;
   const row = Math.floor(frameIndex / SHEET.cols);
-  // Single character at 1x native (48x64, bg 432x256)
+  // Single character at 1x native (48x64, bg 384x576)
   const fw = 48;
   const fh = 64;
   el.style.backgroundPosition = `${col * -fw}px ${row * -fh}px`;

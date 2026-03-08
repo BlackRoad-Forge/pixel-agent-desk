@@ -7,17 +7,27 @@ const agentGrid = document.getElementById('agent-grid');
 
 // --- Sprite sheet settings ---
 const SHEET = {
-  cols: 9,
+  cols: 8,  // 384px / 48px = 8 cols × 9 rows = 72 frames
   width: 48,
   height: 64
 };
 
 // --- Animation sequences ---
+// Frame layout (8 cols × 9 rows, 4 frames per action):
+//   Row 0: front_idle(0-3)  front_walk(4-7)
+//   Row 1: front_sit_idle(8-11)  front_sit_work(12-15)
+//   Row 2: left_idle(16-19)  left_walk(20-23)
+//   Row 3: left_sit_idle(24-27)  left_sit_work(28-31)
+//   Row 4: right_idle(32-35)  right_walk(36-39)
+//   Row 5: right_sit_idle(40-43)  right_sit_work(44-47)
+//   Row 6: back_idle(48-51)  back_walk(52-55)
+//   Row 7: back_sit_idle(56-59)  back_sit_work(60-63)
+//   Row 8: front_done_dance(64-67)  front_alert_jump(68-71)
 const ANIM_SEQUENCES = {
-  working: { frames: [1, 2, 3, 4], fps: 8, loop: true },
-  complete: { frames: [20, 21, 22, 23, 24, 25, 26, 27], fps: 6, loop: true },
-  waiting: { frames: [32], fps: 1, loop: true },
-  alert: { frames: [0, 31], fps: 4, loop: true }
+  working:  { frames: [12, 13, 14, 15], fps: 8, loop: true },  // front_sit_work
+  complete: { frames: [64, 65, 66, 67], fps: 6, loop: true },  // front_done_dance
+  waiting:  { frames: [0, 1, 2, 3],     fps: 4, loop: true },  // front_idle
+  alert:    { frames: [68, 69, 70, 71], fps: 4, loop: true },  // front_alert_jump
 };
 
 // --- State-to-config mapping ---

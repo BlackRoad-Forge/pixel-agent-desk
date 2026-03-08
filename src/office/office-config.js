@@ -9,32 +9,42 @@ const OFFICE = {
   TILE_SIZE: 32,
   FRAME_W: 48,
   FRAME_H: 64,
-  COLS: 9,
+  COLS: 8,  // 384px / 48px = 8 cols × 9 rows = 72 frames
   ANIM_FPS: 8,
   ANIM_INTERVAL: 1000 / 8,
   MOVE_SPEED: 110,
   ARRIVE_THRESHOLD: 2,
 };
 
-// Sprite frame map (avatar_*.webp — 432x256, 9cols x 4rows, 48x64px/frame)
+// Sprite frame map (avatar_*.webp — 384x576, 8cols x 9rows, 48x64px/frame)
+// Row 0: front_idle(0-3)  front_walk(4-7)
+// Row 1: front_sit_idle(8-11)  front_sit_work(12-15)
+// Row 2: left_idle(16-19)  left_walk(20-23)
+// Row 3: left_sit_idle(24-27)  left_sit_work(28-31)
+// Row 4: right_idle(32-35)  right_walk(36-39)
+// Row 5: right_sit_idle(40-43)  right_sit_work(44-47)
+// Row 6: back_idle(48-51)  back_walk(52-55)
+// Row 7: back_sit_idle(56-59)  back_sit_work(60-63)
+// Row 8: front_done_dance(64-67)  front_alert_jump(68-71)
 const SPRITE_FRAMES = {
-  down_idle:   [0],
-  walk_down:   [1, 2, 3, 4],
-  left_idle:   [5],
-  walk_left:   [6, 7, 8, 9],
-  right_idle:  [10],
-  walk_right:  [11, 12, 13, 14],
-  up_idle:     [15],
-  walk_up:     [16, 17, 18, 19],
-  dance:       [20, 21, 22, 23, 24, 25, 26, 27],
-  jump_down:   [28],
-  jump_left:   [29],
-  jump_right:  [30],
-  jump_up:     [31],
-  sit_down:    [32],
-  sit_left:    [33],
-  sit_right:   [34],
-  sit_up:      [35],
+  down_idle:      [0, 1, 2, 3],
+  walk_down:      [4, 5, 6, 7],
+  left_idle:      [16, 17, 18, 19],
+  walk_left:      [20, 21, 22, 23],
+  right_idle:     [32, 33, 34, 35],
+  walk_right:     [36, 37, 38, 39],
+  up_idle:        [48, 49, 50, 51],
+  walk_up:        [52, 53, 54, 55],
+  dance:          [64, 65, 66, 67],
+  alert_jump:     [68, 69, 70, 71],
+  sit_down:       [8,  9,  10, 11],
+  sit_left:       [24, 25, 26, 27],
+  sit_right:      [40, 41, 42, 43],
+  sit_up:         [56, 57, 58, 59],
+  sit_work_down:  [12, 13, 14, 15],
+  sit_work_left:  [28, 29, 30, 31],
+  sit_work_right: [44, 45, 46, 47],
+  sit_work_up:    [60, 61, 62, 63],
 };
 
 // Seat direction/pose config (global ID → pose)

@@ -257,16 +257,22 @@ var officeCharacters = {
         // D6: Overflow agent uses standing work pose
         char.facingDir = 'down';
         char.currentAnim = 'down_idle';
-      } else if (char.agentState !== 'error') {
+      } else if (char.agentState === 'error') {
+        char.currentAnim = 'alert_jump';
+      } else if (currentSpot && currentSpot.type === 'idle') {
+        // Idle zone: stand in last facing direction (not sitting pose)
+        char.currentAnim = (char.facingDir || 'down') + '_idle';
+      } else {
+        // Desk spot: use SEAT_MAP direction + sit/work pose
         const config = currentSpot ? getSeatConfig(currentSpot.id) : { dir: 'down', animType: 'sit' };
         char.facingDir = config.dir;
         if (config.animType === 'sit') {
-          char.currentAnim = 'sit_' + config.dir;
+          const isWorking = char.agentState === 'working' || char.agentState === 'thinking' ||
+                            char.agentState === 'help';
+          char.currentAnim = (isWorking ? 'sit_work_' : 'sit_') + config.dir;
         } else {
           char.currentAnim = config.dir + '_idle';
         }
-      } else {
-        char.currentAnim = 'dance';
       }
       return;
     }
