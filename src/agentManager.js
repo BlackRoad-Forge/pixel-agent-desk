@@ -9,7 +9,7 @@ const path = require('path');
 const { formatSlugToDisplayName } = require('./utils');
 
 // AVATAR_FILES count (synced with renderer/config.js and office/office-config.js)
-const AVATAR_COUNT = 23;
+const AVATAR_COUNT = 8;
 
 class AgentManager extends EventEmitter {
   constructor() {
