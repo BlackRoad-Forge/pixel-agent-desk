@@ -54,10 +54,17 @@ function drawOfficeSprite(ctx, agent) {
   );
 }
 
+function isIdleAnim(key) {
+  return key.endsWith('_idle') ||
+    (key.startsWith('sit_') && !key.startsWith('sit_work_')) ||
+    key === 'dance';
+}
+
 function tickOfficeAnimation(agent, deltaMs) {
   agent.animTimer += deltaMs;
-  if (agent.animTimer >= OFFICE.ANIM_INTERVAL) {
-    agent.animTimer -= OFFICE.ANIM_INTERVAL;
+  const interval = isIdleAnim(agent.currentAnim) ? OFFICE.IDLE_ANIM_INTERVAL : OFFICE.ANIM_INTERVAL;
+  if (agent.animTimer >= interval) {
+    agent.animTimer -= interval;
     const frames = SPRITE_FRAMES[agent.currentAnim];
     if (frames) {
       agent.animFrame = (agent.animFrame + 1) % frames.length;

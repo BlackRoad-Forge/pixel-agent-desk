@@ -115,25 +115,12 @@ var officeRenderer = {
 
     // 3. Characters (Y-sorted)
     const sorted = chars.slice().sort(function (a, b) { return a.y - b.y; });
-    const time = performance.now();
 
     for (let j = 0; j < sorted.length; j++) {
       const agent = sorted[j];
-      let scaleY = 1.0;
-      let floatY = 0;
 
-      // Per-agent phase offset (prevent simultaneous wobble in the same direction)
-      const phaseOffset = (agent.id ? agent.id.charCodeAt(0) : 0) * 0.7;
-
-      if (agent.agentState === 'working') {
-        floatY = Math.sin(time * 0.01 + phaseOffset) * 3;
-        scaleY = 0.98 + Math.sin(time * 0.01 + phaseOffset) * 0.02;
-      } else if (agent.agentState === 'error') {
-        floatY = (Math.random() - 0.5) * 4;
+      if (agent.agentState === 'error') {
         if (Math.random() < 0.1) this.spawnEffect('warning', agent.x, agent.y - 65);
-      } else {
-        floatY = Math.sin(time * 0.005 + phaseOffset) * 3;
-        scaleY = 0.98 + Math.sin(time * 0.005 + phaseOffset) * 0.02;
       }
 
       const isSubType = agent.metadata && agent.metadata.type === 'sub';
@@ -141,14 +128,13 @@ var officeRenderer = {
 
       ctx.save();
       ctx.translate(agent.x, agent.y);
-      ctx.scale(baseScale, scaleY * baseScale);
+      ctx.scale(baseScale, baseScale);
       ctx.translate(-agent.x, -agent.y);
       drawOfficeSprite(ctx, agent);
       ctx.restore();
 
-      const headCorr = (1 - scaleY) * 40;
-      drawOfficeNameTag(ctx, agent, floatY + headCorr);
-      drawOfficeBubble(ctx, agent, floatY + headCorr);
+      drawOfficeNameTag(ctx, agent, 0);
+      drawOfficeBubble(ctx, agent, 0);
     }
 
     // 4. Foreground

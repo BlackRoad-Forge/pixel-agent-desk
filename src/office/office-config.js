@@ -12,6 +12,8 @@ const OFFICE = {
   COLS: 8,  // 384px / 48px = 8 cols × 9 rows = 72 frames
   ANIM_FPS: 8,
   ANIM_INTERVAL: 1000 / 8,
+  IDLE_ANIM_FPS: 2,
+  IDLE_ANIM_INTERVAL: 1000 / 2,
   MOVE_SPEED: 110,
   ARRIVE_THRESHOLD: 2,
 };
