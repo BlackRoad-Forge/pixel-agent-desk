@@ -208,7 +208,6 @@ function createWindowManager({ agentManager, sessionScanner, heatmapScanner, deb
       }
     });
 
-    pipWindow.setAlwaysOnTop(true, 'floating');
     pipWindow.loadURL('http://localhost:3000/pip');
 
     pipWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
