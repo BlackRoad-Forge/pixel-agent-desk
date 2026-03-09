@@ -35,7 +35,7 @@
   },
   "license": "MIT",
   "build": {
-    "appId": "com.geunilbae.pixel-agent-desk",
+    "appId": "com.mgpixelart.pixel-agent-desk",
     "productName": "Pixel Agent Desk",
     "directories": {
       "output": "release"
