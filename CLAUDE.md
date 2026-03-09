@@ -21,9 +21,10 @@ Claude CLI ──HTTP hook──▶ POST(:47821) ──▶ hookProcessor
                                     ▼         ▼
                               agentManager  agent-desk-server(:3000)
                                   │              │
-                                  ▼              ▼
-                            renderer/*      dashboard.html
-                          (pixel avatar)   (agent desk + office)
+                                  ▼         ┌───┴──────────┐
+                            renderer/*      ▼              ▼
+                          (pixel avatar) dashboard.html  pip.html
+                                         (agent desk)  (PiP 플로팅)
 ```
 
 ### Key Modules
@@ -35,8 +36,8 @@ Claude CLI ──HTTP hook──▶ POST(:47821) ──▶ hookProcessor
 | Hook Processor | `src/main/hookProcessor.js` | Event switch + state mapping |
 | Hook Registration | `src/main/hookRegistration.js` | Claude CLI hook auto-registration |
 | Liveness Checker | `src/main/livenessChecker.js` | PID detection, zombie sweep (2s/30s) |
-| Window Manager | `src/main/windowManager.js` | Electron window lifecycle, dashboard server |
-| IPC Handlers | `src/main/ipcHandlers.js` | IPC channel handlers, terminal focus |
+| Window Manager | `src/main/windowManager.js` | Electron window lifecycle, dashboard/PiP server |
+| IPC Handlers | `src/main/ipcHandlers.js` | IPC channel handlers, terminal focus, PiP toggle |
 | Session Persistence | `src/main/sessionPersistence.js` | State persistence, session recovery |
 | Agent Manager | `src/agentManager.js` | Agent state Map, event emitting (SSoT) |
 | Dashboard Adapter | `src/dashboardAdapter.js` | Agent state → dashboard format mapping |
@@ -46,6 +47,8 @@ Claude CLI ──HTTP hook──▶ POST(:47821) ──▶ hookProcessor
 | Pricing | `src/pricing.js` | Per-model token pricing, context window sizes |
 | Error Handler | `src/errorHandler.js` | Error capture, logging, deduplication |
 | Utils | `src/utils.js` | Display name formatting, window sizing |
+| Dashboard Preload | `src/dashboardPreload.js` | IPC bridge for dashboard window |
+| PiP Preload | `src/pipPreload.js` | IPC bridge for PiP window (close, backToDashboard) |
 | Renderer | `src/renderer/*.js` | Pixel avatar Canvas rendering |
 | Virtual Office | `src/office/*.js` | 2D pixel art office (A* pathfinding, sprites) |
 
@@ -87,6 +90,15 @@ Row 8: front_done_dance(64-67) front_alert_jump(68-71)
 - Walk/idle use directional keys: `walk_{dir}`, `{dir}_idle`
 - Desk seated: `sit_{dir}` (idle) or `sit_work_{dir}` (working)
 - Done at idle zone: `IDLE_SEAT_MAP` per spot id (18,28→right / 24→dance / 19,29→left / rest→down)
+
+### PiP (Picture-in-Picture) 모드
+
+- 대시보드 Operational Floorplan 패널 헤더의 PiP 버튼으로 열기/닫기
+- 항상-최상위 플로팅 윈도우 (alwaysOnTop: floating), 오피스 맵 비율(864:800) 고정 리사이즈
+- SSE(`/api/events`)로 에이전트 상태 독립 수신 — 대시보드와 캐릭터 위치는 동기화되지 않음 (각각 독립 officeCharacters Map)
+- PiP 활성 시 대시보드 캔버스 숨김 + 플레이스홀더 표시
+- 대시보드 닫기 → PiP도 함께 닫힘
+- 호버 오버레이: Dashboard(돌아가기) + X(닫기) 버튼
 
 ### Known Limitation: PID Detection on Windows
 
